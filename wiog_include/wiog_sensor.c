@@ -13,8 +13,8 @@
 #include "nvs_flash.h"
 #include "string.h"
 
-#include "../../wiog_include/wiog_system.h"
-#include "../../wiog_include/wiog_data.h"
+#include "wiog_system.h"
+#include "wiog_data.h"
 #include "wiog_sensor.h"
 
 #undef  LOG_LOCAL_LEVEL	//Warnhinweis vermeiden
@@ -31,13 +31,6 @@ species_t species = SENSOR;
 bool waked_up;
 
 SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
-
-
-//Daten, die einen Deep-Sleep überstehen müssen
-RTC_DATA_ATTR static uint8_t  rtc_wifi_channel;
-RTC_DATA_ATTR static uint32_t rtc_cycles;
-RTC_DATA_ATTR static uint32_t rtc_interval_ms;
-RTC_DATA_ATTR static int8_t   rtc_tx_pwr;		//Steuerung Sendeleistung
 
 
 int64_t timer;	//TEST !!!!!!!
@@ -133,7 +126,7 @@ printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
 				if (rtc_tx_pwr > MAX_TX_POWER) rtc_tx_pwr = MAX_TX_POWER;
 				if (rtc_tx_pwr < MIN_TX_POWER) rtc_tx_pwr = MIN_TX_POWER;
 
-				//Tx- Widerholung abbrechen
+				//Tx- Wiederholung abbrechen
 				xSemaphoreGive(return_timeout_Semaphore);
 			}
 
@@ -179,8 +172,16 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
-printf("Tx: 0x%08x | %d Bytes | Typ: %02d | %04d =>\n", evt.wiog_hdr.frameid, tx_len, evt.wiog_hdr.vtype, evt.wiog_hdr.seq_ctrl);
 		esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+
+#ifdef DEBUG_Xx
+		printf("Tx: 0x%08x | %d Bytes | Typ: %02d | %04d =>\n",
+				evt.wiog_hdr.frameid, tx_len, evt.wiog_hdr.vtype, evt.wiog_hdr.seq_ctrl);
+
+		int8_t maxpwr;
+		esp_wifi_get_max_tx_power(&maxpwr);
+		printf("Set Tx-Power: %.2f dBm, %d %d\n", maxpwr *0.25, rtc_tx_pwr, maxpwr);
+#endif
 
 		free(evt.data);
 	}
@@ -218,7 +219,7 @@ bool send_data_frame(uint8_t* buf) {
 			free(tx_frame.data);
 			ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 		}
-timer = esp_timer_get_time();
+
 		tx_frame.wiog_hdr.seq_ctrl++;
 
 		//Antwort-Frame abwarten
@@ -246,8 +247,8 @@ bool wiog_sensor_init() {
 #endif
     if ((rst_reason != ESP_SLEEP_WAKEUP_ULP)  &&
     	(rst_reason != ESP_SLEEP_WAKEUP_EXT1) &&
-		(rst_reason != ESP_SLEEP_WAKEUP_TIMER))
-    {	//frisch initialisieren
+		(rst_reason != ESP_SLEEP_WAKEUP_TIMER)) {
+    	//frisch initialisieren
     	rtc_wifi_channel = 0;
     	rtc_cycles = 0;
     	rtc_no_response_cnt = 0;
@@ -298,7 +299,7 @@ bool wiog_sensor_init() {
 	//Kanal setzen oder Channel-Scan
 	wiog_set_channel(rtc_wifi_channel);
 	esp_wifi_set_max_tx_power(rtc_tx_pwr);
-
+printf("Interval AAAAA %d\n", rtc_interval_ms);
 	return waked_up;
 }
 
@@ -329,6 +330,9 @@ void wiog_set_channel(uint8_t ch) {
 			//Tx-Frame in Tx-Queue stellen
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 					ESP_LOGW("Tx-Queue: ", "Scan fail");
+#ifdef DEBUG_X
+			printf("Scan Channel: %d\n", ch);
+#endif
 			vTaskDelay(30*MS);
 			if (rtc_wifi_channel != 0) {
 				rtc_no_response_cnt = 0;
@@ -338,7 +342,11 @@ void wiog_set_channel(uint8_t ch) {
 
 		//wenn nach einem Durchlauf kein Kanal gefunden wurde -> Gerät in DeepSleep
 		if (rtc_wifi_channel == 0) {
+
 			uint32_t sleeptime_ms = 5*1000;
+			if (rtc_cnt_no_scan++ > 3) sleeptime_ms = 10*60*1000; //Sleep-Time nach  n Versuchen verlängern
+			if (rtc_cnt_no_scan   > 6) sleeptime_ms = 60*60*1000;
+
 			esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
 		    rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
 		    esp_deep_sleep_disable_rom_logging();

@@ -13,8 +13,8 @@
 #include "nvs_flash.h"
 #include "string.h"
 
-#include "../../wiog_include/wiog_system.h"
-#include "../../wiog_include/wiog_data.h"
+#include "wiog_system.h"
+#include "wiog_data.h"
 #include "wiog_actor.h"
 
 #undef  LOG_LOCAL_LEVEL	//Warnhinweis vermeiden

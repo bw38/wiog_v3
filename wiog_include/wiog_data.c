@@ -6,6 +6,14 @@
 #include "wiog_data.h"
 
 
+void add_entry(payload_t* ppl, data_entry_t* pdent ){
+	memcpy(&ppl->data[ppl->ix], pdent, sizeof(data_entry_t));
+	ppl->ix += sizeof(data_entry_t);
+	ppl->man.cnt_entries++;
+}
+
+//---veraltet ----------------------------------------------------------------------------------
+
 void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_t val) {
 	df_i32_t e32 = {
 		.frametype = DF_I32,

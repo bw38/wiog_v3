@@ -13,6 +13,20 @@
 
 #include "wiog_system.h"
 
+//Standard-Frame-Typ
+typedef struct __attribute__((packed)) {
+	uint8_t  datatype;
+	uint8_t  index;
+	uint8_t  status;	//0 = Ok / !=0 -> Fehler
+	uint8_t val_U8A;
+	int32_t val_I32A;
+	int32_t val_I32B;
+	int32_t val_I32C;
+} data_entry_t;
+
+// --------------------------------------------------
+
+//veraltet
 typedef enum {
 	DF_I32 = 0,
 	DF_I64 = 1,
@@ -43,7 +57,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t txt[];
 } df_str_t;
 
-
+// --------------------------------------------------------
 
 //#define MANAGEMENT_SZ 32
 typedef struct __attribute__((packed)) {

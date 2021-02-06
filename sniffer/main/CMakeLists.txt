@@ -4,7 +4,6 @@ set(COMPONENT_PRIV_REQUIRES )
 
 set(COMPONENT_SRCS 
 	"sniffer_main.c"
-	"ln_iog.c"
 )
 set(COMPONENT_ADD_INCLUDEDIRS "")
 

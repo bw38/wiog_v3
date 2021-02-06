@@ -14,7 +14,7 @@
 #include "string.h"
 #include "esp_log.h"
 
-#include "ln_iog.h"
+#include "../../wiog_include/wiog_system.h"
 
 
 #define	LED_GPIO_PIN					GPIO_NUM_4

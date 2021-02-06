@@ -12,9 +12,8 @@
  */
 
 
+#define DEBUG_X
 
-//#include <stdlib.h>
-//#include "stdint.h"
 
 #include "esp_wifi.h"
 
@@ -25,9 +24,13 @@
 static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .policy=WIFI_COUNTRY_POLICY_AUTO};
 
 //Wertebereich esp_wifi_set_max_tx_power(x)
-//Bug in esp_wifi_set_max_tx_power()
-#define MAX_TX_POWER 78		//82	// => 20.5dBm
-#define MIN_TX_POWER -42	//40 // => 10dBm
+#ifdef DEBUG_X	//reduzierte Leistung im Debug-Modus
+#define MAX_TX_POWER 20  	// => 5dBm
+#define MIN_TX_POWER 8		// => 2dBm
+#else
+#define MAX_TX_POWER 84  	// => 20dBm
+#define MIN_TX_POWER 8		// => 2dBm
+#endif
 #define IDEAL_SNR 12		//(dB) Sensoren einpegeln
 
 #define SYSTEM_ID 19950410	//z. systemweiten Prüfung der Gütligkeit der Daten
@@ -155,7 +158,7 @@ typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
 	wiog_header_t wiog_hdr;
 	int64_t target_time;	//Sendezeitpunkt
 	bool crypt_data;		//true -> Datenblock wird verschlüsselt
-	uint16_t data_len;			//Länge des Datenpaketes
+	uint16_t data_len;		//Länge des Datenpaketes
 	uint8_t  *data;			//Pointer auf Datenpaket
 } wiog_event_txdata_t;
 
@@ -187,6 +190,12 @@ uint8_t nvs_get_wifi_channel();
 void nvs_set_wifi_channel(uint8_t ch);
 int32_t nvs_get_sysvar(uint8_t ix);
 void nvs_set_sysvar(uint8_t ix, int32_t value);
+
+//Debug
+#ifdef DEBUG_X
+int now();
+void compare_set_get_tx_power();
+#endif
 
 
 

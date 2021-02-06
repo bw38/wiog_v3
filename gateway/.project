@@ -17,4 +17,26 @@
 		<nature>org.eclipse.cdt.core.ccnature</nature>
 		<nature>com.espressif.idf.core.idfNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>main/wiog_data.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_data.c</locationURI>
+		</link>
+		<link>
+			<name>main/wiog_data.h</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_data.h</locationURI>
+		</link>
+		<link>
+			<name>main/wiog_system.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_system.c</locationURI>
+		</link>
+		<link>
+			<name>main/wiog_system.h</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_system.h</locationURI>
+		</link>
+	</linkedResources>
 </projectDescription>

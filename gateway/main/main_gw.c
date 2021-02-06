@@ -279,7 +279,7 @@ bool send_data_frame(payload_t pl) {
 static void wiog_return_to_device_task(void *pvParameter){
 	uint32_t *id = (uint32_t*)pvParameter;
 
-	vTaskDelay(40*MS);
+//	vTaskDelay(40*MS);
 	int ix = get_dbls(*id);
 	if (ix >=0) {
 		wiog_event_txdata_t tx_frame;
@@ -442,7 +442,11 @@ void app_main(void) {
 	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
 	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
 
-	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER) );
+	//Gateway mit max tx power
+	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
+	int8_t maxpwr;
+	esp_wifi_get_max_tx_power(&maxpwr);
+	printf("Set Tx-Power: %.2f dBm\n", maxpwr *0.25);
 
 	while (true) {
 
@@ -461,7 +465,7 @@ void app_main(void) {
 
 		add_entry_I32(&pl, 111, 222, 255, 888888 );
 
-		send_data_frame(pl);
+//		send_data_frame(pl);
 
 		vTaskDelay(5000*MS);
 	}

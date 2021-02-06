@@ -15,7 +15,7 @@
 
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
-#include "wiog_actor.h"
+#include "../../wiog_include/wiog_actor.h"
 
 #define VERSION  3
 #define REVISION 0

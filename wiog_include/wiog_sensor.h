@@ -15,6 +15,14 @@
 RTC_DATA_ATTR static uint32_t rtc_onTime;
 RTC_DATA_ATTR static uint8_t  rtc_no_response_cnt;
 
+
+//Daten, die einen Deep-Sleep überstehen müssen
+RTC_DATA_ATTR static uint8_t  rtc_wifi_channel;
+RTC_DATA_ATTR static uint32_t rtc_cycles;
+RTC_DATA_ATTR static uint32_t rtc_interval_ms;
+RTC_DATA_ATTR static int8_t   rtc_tx_pwr;		//Steuerung Sendeleistung
+RTC_DATA_ATTR static uint32_t rtc_cnt_no_scan;  //Fehlversuche Channelscan
+
 //öffentliche Funktionen
 bool wiog_sensor_init();
 bool send_data_frame(uint8_t* buf);
