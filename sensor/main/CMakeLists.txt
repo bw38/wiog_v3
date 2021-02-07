@@ -6,7 +6,6 @@ set(COMPONENT_SRCS
 	"sensor_main.c"
 	"../../wiog_include/wiog_system.c"
 	"../../wiog_include/wiog_data.c"
-	"../../wiog_include/wiog_sensor.c"
 )
 
 set(COMPONENT_ADD_INCLUDEDIRS "")

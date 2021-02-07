@@ -41,9 +41,9 @@ static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .p
 
 #define FW_VERSION				03
 #define FW_REVISION				00
-#define MIN_SLEEP_TIME_MS		3*SEK
-#define MAX_SLEEP_TIME_MS		12*STD
-#define DEFAULT_SLEEP_TIME_MS 	10*MIN
+//#define MIN_SLEEP_TIME_MS		3*SEK
+//#define MAX_SLEEP_TIME_MS		12*STD
+//#define DEFAULT_SLEEP_TIME_MS 	10*MIN
 #define MY_SPECIES				SPECIES_SENSOR
 #define FIRST_SLEEP_MS			3*SEK
 
@@ -193,8 +193,8 @@ void nvs_set_sysvar(uint8_t ix, int32_t value);
 
 //Debug
 #ifdef DEBUG_X
-int now();
-void compare_set_get_tx_power();
+	int now();
+	void compare_set_get_tx_power();
 #endif
 
 

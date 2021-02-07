@@ -55,12 +55,8 @@ uint8_t dbl_ix = 0;
 //-----------------------------------------------------
 
 
-//-----------------------------------------------------
-
-
-
 //Prototypen
-static void wiog_return_to_device_task(void *pvParameter);
+static void rx_data_processing_task(void *pvParameter);
 int get_dbls(uint32_t fid);
 
 
@@ -170,8 +166,9 @@ printf("%s\n", buf);
 				uint32_t *pid = malloc(sizeof(uint32_t));
 				*pid = pHdr->frameid;
 
+				//RxQuittung senden & Verarbeitung der Rx-Daten
 				//Test - Speicherplatz am Task-Ende wieder freigeben !!!
-				xTaskCreate(wiog_return_to_device_task, "wiog_tx_data_task", 2048, pid, 2, NULL);
+				xTaskCreate(rx_data_processing_task, "wiog_tx_data_task", 2048, pid, 2, NULL);
 
 			}
 		} //data_to_gw
@@ -275,8 +272,8 @@ bool send_data_frame(payload_t pl) {
 
 //---------------------------------------------------------------------------------------------------
 
-//Test-Task - wird später durch Rx-UART ersetzt
-static void wiog_return_to_device_task(void *pvParameter){
+//Rx-Quittung senden und Weiterleitung der Daten an PiGateway
+static void rx_data_processing_task(void *pvParameter){
 	uint32_t *id = (uint32_t*)pvParameter;
 
 //	vTaskDelay(40*MS);

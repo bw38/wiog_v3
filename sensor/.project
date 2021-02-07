@@ -29,16 +29,6 @@
 			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_data.h</locationURI>
 		</link>
 		<link>
-			<name>main/wiog_sensor.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_sensor.c</locationURI>
-		</link>
-		<link>
-			<name>main/wiog_sensor.h</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_sensor.h</locationURI>
-		</link>
-		<link>
 			<name>main/wiog_system.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_system.c</locationURI>

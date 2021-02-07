@@ -29,17 +29,6 @@ static int64_t ts_pkts_start = 0;
 #define WIOG_SNIFFER_QUEUE_SIZE 6
 static xQueueHandle wiog_sniffer_queue;
 
-//Prototypen
-int64_t now();
-
-void hexdump(uint8_t *data, int len) {
-	printf("\n");
-	for( int i = 0; i < len; i++ )
-	{
-		printf( "%02x%c", data[i], ((i&0xf)!=0xf)?' ':'\n' );
-	}
-	printf( "\n" );
-}
 
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
@@ -137,6 +126,3 @@ void app_main(void) {
 
 // -------------------------------------------------------------------------
 
-int64_t now(){
-	return esp_timer_get_time();
-}
