@@ -37,6 +37,8 @@ static xQueueHandle wiog_tx_queue;
 
 SemaphoreHandle_t return_timeout_Semaphore = NULL;
 
+mesh_devices_t mesh_devices;
+
 // Double-List ----------------------------------------
 //nur das erste empfangene Paket  einer ID wird verarbeitet, Wiederholungen werden verworfen
 //bester Empfangspegel an Repeater / Gateway - zu Regulierung Tx-Power von Sensoren
@@ -54,6 +56,7 @@ double_entry_t dbls[DBLS_SZ];
 uint8_t dbl_ix = 0;
 //-----------------------------------------------------
 
+uint8_t slot = 0;
 
 //Prototypen
 static void rx_data_processing_task(void *pvParameter);
@@ -101,7 +104,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		if (pHdr->vtype == SCAN_FOR_CHANNEL) {
 			wiog_event_txdata_t tx_frame = {
 				.crypt_data = false,
-				.target_time = 0,
+				.target_time = esp_timer_get_time() + slot * SLOT_TIME_MS,	//slot immer 0 ??
 				.data_len = 0,
 				.data = NULL
 			};
@@ -113,7 +116,18 @@ static void wiog_rx_processing_task(void *pvParameter) {
 					ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 			}
 		} //scan_for_channel --------------------------------------------------------------
+		else
 
+		//Datenpaket von Device auswerten
+		if (pHdr->vtype == DATA_TO_GW) {
+			//Response vom Gatewa senden ?
+			uint16_t uid = pHdr->uid;
+
+
+		}
+
+
+/*
 		//Empfang eines Datenpaketes von Sensor/Actor
 		if (pHdr->vtype == DATA_TO_GW) {
 			//prüfen, ob Frame-ID bereits bekannt ist
@@ -172,8 +186,8 @@ printf("%s\n", buf);
 
 			}
 		} //data_to_gw
-
-		//Empfangsbestätigung vom Actor
+*/
+/*		//Empfangsbestätigung vom Actor
 		if ((pHdr->vtype == RETURN_FROM_ACTOR)&&(actual_frame_id == pHdr->frameid)) {
 			actual_frame_id++;	//verfälschen
 			//Entschlüsselung nicht erforderlich ???
@@ -181,6 +195,11 @@ printf("%s\n", buf);
 			//Empfang wurde bestätigt -> Tx- Widerholung abbrechen
 			xSemaphoreGive(return_timeout_Semaphore);
 		}
+*/
+
+
+
+
 
 		free(evt.data);
 	}	//while
@@ -418,6 +437,7 @@ void app_main(void) {
 
 	return_timeout_Semaphore = xSemaphoreCreateBinary();
 
+	mesh_clear_all(mesh_devices);
 	bzero(dbls, sizeof(dbls));
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -444,6 +464,7 @@ void app_main(void) {
 	int8_t maxpwr;
 	esp_wifi_get_max_tx_power(&maxpwr);
 	printf("Set Tx-Power: %.2f dBm\n", maxpwr *0.25);
+
 
 	while (true) {
 

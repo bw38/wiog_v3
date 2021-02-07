@@ -129,6 +129,11 @@ printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
 				uint8_t payload[blocksz];
 				cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key));
 
+				management_t* mgn = (management_t*)payload;
+				uint32_t ivl = mgn->interval;
+				if ((ivl>=SENSOR_MIN_SLEEP_TIME_MS) && (ivl <= SENSOR_MAX_SLEEP_TIME_MS))
+					rtc_interval_ms = ivl;
+
 				//Verarbeitung der Daten
 
 				//vom GW empfohlener Korrekturwert zur Einpegelung auf IDEAL_SNR
@@ -203,7 +208,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 // Öffentliche Funktionen ================================================================================
 
 //Datenframe managed an Gateway senden
-bool send_data_frame(uint8_t* buf) {
+int send_data_frame(uint8_t* buf) {
 
 	uint8_t len = buf[0];		//Längenbyte
 	uint8_t *data = &buf[1];	//Datenbereich
@@ -214,34 +219,30 @@ bool send_data_frame(uint8_t* buf) {
 	tx_frame.wiog_hdr.species = species;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 
-	//Wiederholschleife
-	for (int i = 0; i < 6; i++) {
-		tx_frame.wiog_hdr.frameid = esp_random();
-		actual_frame_id = tx_frame.wiog_hdr.frameid;
+	tx_frame.wiog_hdr.frameid = esp_random();
+	actual_frame_id = tx_frame.wiog_hdr.frameid;
+	tx_frame.data = malloc(len);
+	memcpy(tx_frame.data, data, len);
+	tx_frame.data_len = len;
+	tx_frame.crypt_data = true;
+	tx_frame.target_time = 0;
 
-		tx_frame.data = malloc(len);
-		memcpy(tx_frame.data, data, len);
-		tx_frame.data_len = len;
-		tx_frame.crypt_data = true;
-		tx_frame.target_time = 0;
-
-		if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-			free(tx_frame.data);
+	//Wiederholschleife - 6 Versuche
+	int i;
+	for (i = 0; i < 6; i++) {
+		if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 			ESP_LOGW("Tx-Queue: ", "Tx Data fail");
-		}
-
-		tx_frame.wiog_hdr.seq_ctrl++;
 
 		//Antwort-Frame abwarten
 		if (xSemaphoreTake(return_timeout_Semaphore, 80*MS) == pdTRUE)
 			break;
 
-	}	//for Tx-Versuche
+		tx_frame.wiog_hdr.seq_ctrl++;
 
-	//Frame-ID wurde bei erfolgreichem Response verfälscht
-	bool res = actual_frame_id != tx_frame.wiog_hdr.frameid;
-	if (!res) rtc_no_response_cnt++;
-	return res;
+	}	//for Tx-Versuche
+	free(tx_frame.data);
+
+	return i;
 }
 
 // ---------------------------------------------------------------------------------
@@ -385,7 +386,7 @@ bool wiog_sensor_init() {
 void app_main(void) {
 
 	wiog_sensor_init();
-
+vTaskDelay (1000*MS);
 	//Test-Frame senden ---------------------------------------------
 	char txt[] = {"Hello World - How are you ? Dast ist ein Test"};
 
@@ -399,7 +400,7 @@ void app_main(void) {
 
 	//----------------------------------------------------------------
 
-//	vTaskDelay (100*MS);
+
 	rtc_onTime += esp_timer_get_time() / 1000;
 
 	//Bereichsprüfung interval

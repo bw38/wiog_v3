@@ -86,11 +86,39 @@ typedef struct __attribute__((packed)) {
 } payload_t;
 
 
+// -----------------------------------------------------------------------
+//Mesh
+//Prio-Liste zur Entscheidung welcher Repeater oder Gateway auf das Datenpaket eines Device-UID antwortet
+//Daten f. Response-Frame
+typedef struct __attribute__((packed)) {
+	int32_t  uid;			//-1 -> ungültig / uint16_t -> gültig
+	uint32_t interval_ms;	//Device-Interval für Antwort-Frame
+	uint8_t  priority;		//f. Time-Slot -> ACK to Device
+	uint8_t	 standby;		// != 0 -> Device soll auf Anweisung des Gateway warten
+	int64_t  ts;			//Zeitpunkt - zuletzt gesetzt (f. cleaning)
+}mesh_devices_t[MAX_DEVICES];
+
+
+
+//------------------------------------------------------------------------
+
+
+
 extern void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_t val);
 extern void add_entry_I64 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int64_t val);
 extern void add_entry_buf (payload_t* pl, uint8_t type, uint8_t ix, uint8_t len, uint8_t* buf);
 extern void add_entry_str (payload_t* pl, uint8_t type, uint8_t ix, char* str);
 extern void* get_next_entry (payload_t* pl, data_frame_t* dft);
+
+
+//Mesh - Prio -Liste
+int mesh_get_uid_ix(mesh_devices_t mds, int32_t uid);
+int32_t mesh_get_priority(mesh_devices_t mesh_list, uint16_t uid);
+void mesh_set_priority(mesh_devices_t mesh_list, uint16_t uid, int32_t prio);
+void mesh_clear_list(mesh_devices_t mesh_list);
+void mesh_clear_all(mesh_devices_t mesh_list);
+
+
 
 
 #endif  //__WIOG_DATA_H__

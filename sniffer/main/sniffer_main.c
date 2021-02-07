@@ -44,7 +44,7 @@ IRAM_ATTR  void wifi_sniffer_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	}
 
 	wiog_event_rxdata_t frame;
-	frame.timestamp = now();
+	frame.timestamp = now()*1000;
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 	memcpy(&frame.wiog_hdr, header, sizeof(wiog_header_t));
 	frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //ohne FCS

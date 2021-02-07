@@ -12,7 +12,6 @@ void add_entry(payload_t* ppl, data_entry_t* pdent ){
 	ppl->man.cnt_entries++;
 }
 
-//---veraltet ----------------------------------------------------------------------------------
 
 void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_t val) {
 	df_i32_t e32 = {
@@ -96,4 +95,59 @@ void* get_next_entry (payload_t* pl, data_frame_t* dft) {
 	}
 
 	return entry;
+}
+
+// -----------------------------------------------------------------------------
+
+//Mesh - Prio-Data-Liste f. Repeater und Gateway
+
+//Listenplatz einer uid suchen
+//bei uid == -1 -> ersten freien Platz zurückliefern
+int mesh_get_uid_ix(mesh_devices_t mds, int32_t uid){
+	int res = -1;
+	for (int i=0; i< MAX_DEVICES; i++)
+		if (mds[i].uid == uid){
+			res = i;
+			break;
+		}
+	return res;
+}
+
+int32_t mesh_get_priority(mesh_devices_t mds, uint16_t uid) {
+	int res = -1;
+	int ix = mesh_get_uid_ix(mds, uid);
+	if (ix >= 0)
+		res = mds[ix].priority;
+	return res;
+}
+
+int mesh_set_priority(mesh_devices_t mds, uint16_t uid, int32_t prio){
+	int ix = mesh_get_uid_ix(mds, uid);
+	if (ix < 0) {	//neuer Eintrag
+		ix = mesh_get_uid_ix(mds, -1);	//ersten freien Platz suchen
+		mds[ix].uid = uid;
+		mds[ix].interval_ms = 0;
+		mds[ix].standby = 0;
+	}
+	mds[ix].priority = prio;
+	mds[ix].ts = esp_timer_get_time();	//Timestamp
+	return ix;
+}
+
+//unbenutzte Einträge löschen
+#define MESH_PRIO_UNUSED_TIME_MS 6*STD
+
+void mesh_clear_list(mesh_devices_t mesh_list) {
+	for (int i = 0; i < MAX_DEVICES; i++) {
+		//nach x time ohne schreibenden Zugriff -> Device aus mesh-prio-Liste löschen
+		if ((mesh_list[i].uid >= 0) && ((mesh_list[i].ts + MESH_PRIO_UNUSED_TIME_MS) < esp_timer_get_time() ))
+			mesh_list[i].uid = -1;
+	}
+}
+
+//Liste initialisieren
+void mesh_clear_all(mesh_devices_t mds) {
+	for (int i = 0; i < MAX_DEVICES; i++) {
+		mds[i].uid = -1;
+	}
 }

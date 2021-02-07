@@ -20,6 +20,7 @@
 
 #define MS 1/portTICK_PERIOD_MS	//1 Tick je 10ms
 #define WORKING_CHANNEL 3
+#define MAX_DEVICES		64		//Max 64 Devices lassen sich im Netzwerk verwalten
 
 static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .policy=WIFI_COUNTRY_POLICY_AUTO};
 
@@ -44,8 +45,10 @@ static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .p
 //#define MIN_SLEEP_TIME_MS		3*SEK
 //#define MAX_SLEEP_TIME_MS		12*STD
 //#define DEFAULT_SLEEP_TIME_MS 	10*MIN
-#define MY_SPECIES				SPECIES_SENSOR
+//#define MY_SPECIES				SPECIES_SENSOR
 #define FIRST_SLEEP_MS			3*SEK
+
+#define SLOT_TIME_MS 5000	//Repeater und Gateway - n µs
 
 
 #define AES_KEY_SZ 32	//Key - Länge in Bytes => 256Bit
@@ -193,6 +196,8 @@ void nvs_set_sysvar(uint8_t ix, int32_t value);
 
 //Debug
 #ifdef DEBUG_X
+	void tstart(uint8_t ix );
+	int tstop(uint8_t ix);
 	int now();
 	void compare_set_get_tx_power();
 #endif
