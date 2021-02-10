@@ -93,12 +93,13 @@ typedef enum {
 //Vendor-Frame-Type
 typedef enum {
 	UNKNOWN = 0,
-    SCAN_FOR_CHANNEL,
-	ACK_FOR_CHANNEL,
+    SCAN_FOR_CHANNEL,	//Device sucht Kanal
+	ACK_FOR_CHANNEL,	//Repeater und GW antworten auf Kanalsuche
 	DATA_TO_GW,
     RETURN_FROM_GW,
 	DATA_TO_ACTOR,
 	RETURN_FROM_ACTOR,
+	SNR_INFO_TO_GW,		//Repeater meldet Empfangsgüte an Gateway
 //	REPEATED_TO_GW,
 } vtype_t;
 
@@ -160,6 +161,7 @@ typedef struct __attribute__((packed)){ //cb stellt Rx-Daten in die Rx-Queue
 typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
 	wiog_header_t wiog_hdr;
 	int64_t target_time;	//Sendezeitpunkt
+	uint8_t tx_max_repeat;	//Tx-Wiederholung 0 => es wird kein Ack erwartet
 	bool crypt_data;		//true -> Datenblock wird verschlüsselt
 	uint16_t data_len;		//Länge des Datenpaketes
 	uint8_t  *data;			//Pointer auf Datenpaket

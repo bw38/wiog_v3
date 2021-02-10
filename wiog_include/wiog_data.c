@@ -137,11 +137,11 @@ int mesh_set_priority(mesh_devices_t mds, uint16_t uid, int32_t prio){
 //unbenutzte Einträge löschen
 #define MESH_PRIO_UNUSED_TIME_MS 6*STD
 
-void mesh_clear_list(mesh_devices_t mesh_list) {
+void mesh_clear_list(mesh_devices_t mds) {
 	for (int i = 0; i < MAX_DEVICES; i++) {
 		//nach x time ohne schreibenden Zugriff -> Device aus mesh-prio-Liste löschen
-		if ((mesh_list[i].uid >= 0) && ((mesh_list[i].ts + MESH_PRIO_UNUSED_TIME_MS) < esp_timer_get_time() ))
-			mesh_list[i].uid = -1;
+		if ((mds[i].uid >= 0) && ((mds[i].ts + MESH_PRIO_UNUSED_TIME_MS) < esp_timer_get_time() ))
+			mds[i].uid = -1;
 	}
 }
 

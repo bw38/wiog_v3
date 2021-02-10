@@ -76,6 +76,8 @@ uint32_t hdlB_ids[HDLB_SZ];
 SemaphoreHandle_t return_timeout_Semaphore = NULL;
 
 mesh_devices_t mesh_devices;
+uint32_t ack_id = 0;		//Vergleich mit FrameID
+
 
 //Prototypen
 //static void repeat_frame_to_gw_task (void *pvParameter);
@@ -109,6 +111,17 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	}
 }
 
+//verzögertes Senden von Datenpaketen (Repeater-Slots)
+void cb_tx_delay_slot(void* arg) {  //one-shot-timer
+	wiog_event_txdata_t* ptx_frame = arg;
+	if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE) {
+			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
+	}
+	free(ptx_frame);
+printf("Tx in Slot: %d\n", ptx_frame->wiog_hdr.uid);
+
+}
+
 
 //Verarbeitung eines empfangenen Datenpaketes
 //kompletter Sniffer-Frame im Event-Parameter der Queue
@@ -119,7 +132,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 	while ((xQueueReceive(wiog_rx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
-		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
+//		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 
 		// Antwort auf eigenen Channel-Scan ---------------------------------
@@ -132,30 +145,52 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		else
 		if ((pHdr->vtype == SCAN_FOR_CHANNEL) && (species == REPEATER))
 		{
-			wiog_event_txdata_t tx_frame = {
-				.crypt_data = false,
-				.target_time = esp_timer_get_time() + slot * SLOT_TIME_MS,
-				.data_len = 0,
-				.data = NULL
-			};
-			tx_frame.wiog_hdr = evt.wiog_hdr;
-			tx_frame.wiog_hdr.mac_from[5] = REPEATER;
-			tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
-			tx_frame.wiog_hdr.vtype = ACK_FOR_CHANNEL;
-			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-					ESP_LOGW("Tx-Queue: ", "Channelscan fail");
-			}
-/*
-  	  	  const esp_timer_create_args_t timer_args = {
-  	  			  .callback = &cb_tx_delay_slot,
-				  .arg = (void*) NULL,  // argument will be passed to cb-function
-				  .name = "scan_ackn_slot"
-  	  	  };
+			//Channel-Info an Device zurückliefern ---------------------------------
+			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
+			ptx_frame->crypt_data = false;
+			ptx_frame->target_time = 0;
+			ptx_frame->tx_max_repeat = 0;	//kein Response v. Device
+			ptx_frame->data_len = 0;
+			ptx_frame->data = NULL;
+			ptx_frame->wiog_hdr = evt.wiog_hdr;
+			ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
+			ptx_frame->wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
+			ptx_frame->wiog_hdr.vtype = ACK_FOR_CHANNEL;
 
-  	  	  esp_timer_handle_t h_timer;
-  	  	  ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-  	  	  ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 10*MS)); 	// Start the timer
-*/
+			const esp_timer_create_args_t timer_args = {
+  	  			  .callback = &cb_tx_delay_slot,
+				  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
+				  .name = "scan_ackn_slot"
+			};
+
+			esp_timer_handle_t h_timer;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, slot * SLOT_TIME_MS)); 	// Start the timer
+
+			//Feldstärke-Info an GW senden --------------------------------------
+			wiog_event_txdata_t* ptx_frame2 = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
+			ptx_frame2->crypt_data = false;
+			ptx_frame2->target_time = 0,
+			ptx_frame2->tx_max_repeat = 5;
+			ptx_frame2->data_len = 0;
+			ptx_frame2->data = NULL;
+			ptx_frame2->wiog_hdr = evt.wiog_hdr;
+			ptx_frame2->wiog_hdr.mac_from[5] = REPEATER;
+			ptx_frame2->wiog_hdr.mac_to[5] = GATEWAY;
+			ptx_frame2->wiog_hdr.vtype = RSSI_INFO_TO_GW;
+			ptx_frame2->wiog_hdr.tagA = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;	//Rx - SNR von device
+			ptx_frame2->wiog_hdr.tagC = evt.wiog_hdr.uid;							//uid des devices
+			ptx_frame2->wiog_hdr.uid = dev_uid;				//eigene uid an GW
+
+			const esp_timer_create_args_t timer_args2 = {
+  	  			  .callback = &cb_tx_delay_slot,
+				  .arg = (void*) ptx_frame2,  // argument will be passed to cb-function
+				  .name = "scan_ackn_slot"
+			};
+
+			esp_timer_handle_t h_timer2;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args2, &h_timer2));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, slot * SLOT_TIME_MS*20)); 	// Start the timer
 		}
 
 
@@ -348,8 +383,15 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		//Sendug ggf verzögern
 		int64_t del_us = evt.target_time - esp_timer_get_time();
 		if (del_us > 0)	ets_delay_us((uint32_t) del_us);
-		esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
 
+		for (int i = 0; i <= evt.tx_max_repeat; i++) {
+			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+			vTaskDelay(50*MS);
+			if (ack_id == evt.wiog_hdr.frameid)
+				break;
+		}
+
+if (del_us < 0) del_us = 0;
 printf("Tx-Delay: %dµs\n", (int)del_us);
 
 free(evt.data);

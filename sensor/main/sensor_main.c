@@ -198,7 +198,6 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		printf("Set Tx-Power: %.2f dBm, %d %d\n", maxpwr *0.25, rtc_tx_pwr, maxpwr);
 #endif
 
-		free(evt.data);
 	}
 }
 
@@ -269,15 +268,14 @@ void wiog_set_channel(uint8_t ch) {
 
 		rtc_tx_pwr = MAX_TX_POWER;
 		esp_wifi_set_max_tx_power(rtc_tx_pwr);
-
-		for (ch = 1; ch <= wifi_country_de.nchan; ch++) {
+//ch=1 !!!!!
+		for (ch = 3; ch <= wifi_country_de.nchan; ch++) {
 			ESP_ERROR_CHECK( esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE));
 			//Tx-Frame in Tx-Queue stellen
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 					ESP_LOGW("Tx-Queue: ", "Scan fail");
-#ifdef DEBUG_X
-    printf("Scan Channel: %d\n", ch);
-#endif
+printf("Scan Channel: %d\n", ch);
+
 			vTaskDelay(30*MS);
 			if (rtc_wifi_channel != 0) {
 				rtc_no_response_cnt = 0;
@@ -285,22 +283,23 @@ void wiog_set_channel(uint8_t ch) {
 			}
 		}
 
-		//wenn nach einem Durchlauf kein Kanal gefunden wurde -> Gerät in DeepSleep
+		uint32_t sleeptime_ms;
 		if (rtc_wifi_channel == 0) {
-
-			uint32_t sleeptime_ms = 5*1000;
+			//wenn nach einem Durchlauf kein Kanal gefunden wurde -> Gerät in DeepSleep
+			sleeptime_ms = 5*1000;
 			if (rtc_cnt_no_scan++ > 3) sleeptime_ms = 10*60*1000; //Sleep-Time nach  n Versuchen verlängern
 			if (rtc_cnt_no_scan   > 6) sleeptime_ms = 60*60*1000;
-
-			esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
-		    rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
-		    esp_deep_sleep_disable_rom_logging();
-		    printf("Goto DeepSleep for %dms\n", sleeptime_ms);
-			esp_deep_sleep_start();
-
 		} else {
 			ESP_ERROR_CHECK( esp_wifi_set_channel(rtc_wifi_channel, WIFI_SECOND_CHAN_NONE));
+printf("Set Channel: %d\n", rtc_wifi_channel);
+			sleeptime_ms = 50*1000;	//1. Ruhezeit	!!!!!!!!!!!!! 5
 		}
+
+		esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
+		rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
+		esp_deep_sleep_disable_rom_logging();
+		printf("Goto DeepSleep for %dms\n", sleeptime_ms);
+		esp_deep_sleep_start();
 
 	} else {
 		rtc_wifi_channel = ch;
@@ -327,7 +326,7 @@ bool wiog_sensor_init() {
     	(rst_reason != ESP_SLEEP_WAKEUP_EXT1) &&
 		(rst_reason != ESP_SLEEP_WAKEUP_TIMER)) {
     	//frisch initialisieren
-    	rtc_wifi_channel = 0;
+    	rtc_wifi_channel = 0;	//Channel-scan veranlassen
     	rtc_cycles = 0;
     	rtc_no_response_cnt = 0;
     	rtc_interval_ms = SENSOR_DEF_SLEEP_TIME_MS;
@@ -387,6 +386,7 @@ void app_main(void) {
 
 	wiog_sensor_init();
 vTaskDelay (1000*MS);
+
 	//Test-Frame senden ---------------------------------------------
 	char txt[] = {"Hello World - How are you ? Dast ist ein Test"};
 

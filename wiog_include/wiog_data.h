@@ -113,10 +113,10 @@ extern void* get_next_entry (payload_t* pl, data_frame_t* dft);
 
 //Mesh - Prio -Liste
 int mesh_get_uid_ix(mesh_devices_t mds, int32_t uid);
-int32_t mesh_get_priority(mesh_devices_t mesh_list, uint16_t uid);
-void mesh_set_priority(mesh_devices_t mesh_list, uint16_t uid, int32_t prio);
-void mesh_clear_list(mesh_devices_t mesh_list);
-void mesh_clear_all(mesh_devices_t mesh_list);
+int32_t mesh_get_priority(mesh_devices_t mds, uint16_t uid);
+int mesh_set_priority(mesh_devices_t mds, uint16_t uid, int32_t prio);
+void mesh_clear_list(mesh_devices_t mds);
+void mesh_clear_all(mesh_devices_t mds);
 
 
 
