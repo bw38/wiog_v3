@@ -86,22 +86,6 @@ typedef struct __attribute__((packed)) {
 } payload_t;
 
 
-// -----------------------------------------------------------------------
-//Mesh
-//Prio-Liste zur Entscheidung welcher Repeater oder Gateway auf das Datenpaket eines Device-UID antwortet
-//Daten f. Response-Frame
-typedef struct __attribute__((packed)) {
-	int32_t  uid;			//-1 -> ungültig / uint16_t -> gültig
-	uint32_t interval_ms;	//Device-Interval für Antwort-Frame
-	uint8_t  priority;		//f. Time-Slot -> ACK to Device
-	uint8_t	 standby;		// != 0 -> Device soll auf Anweisung des Gateway warten
-	int64_t  ts;			//Zeitpunkt - zuletzt gesetzt (f. cleaning)
-}mesh_devices_t[MAX_DEVICES];
-
-
-
-//------------------------------------------------------------------------
-
 
 
 extern void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_t val);
@@ -111,14 +95,32 @@ extern void add_entry_str (payload_t* pl, uint8_t type, uint8_t ix, char* str);
 extern void* get_next_entry (payload_t* pl, data_frame_t* dft);
 
 
-//Mesh - Prio -Liste
-int mesh_get_uid_ix(mesh_devices_t mds, int32_t uid);
-int32_t mesh_get_priority(mesh_devices_t mds, uint16_t uid);
-int mesh_set_priority(mesh_devices_t mds, uint16_t uid, int32_t prio);
-void mesh_clear_list(mesh_devices_t mds);
-void mesh_clear_all(mesh_devices_t mds);
 
+// -----------------------------------------------------------------------
+//Mesh
+//Prio-Liste zur Entscheidung welcher Repeater oder Gateway auf das Datenpaket eines Device-UID antwortet
 
+// Node-Information-Block NIB
+// Der NIB wird vom GW erzeugt und als Broadcast gesendet, incl Localtime
+// Die Nodes empfangen den NIB und aktualisieren ggf den lokalen NIB im DRAM
+// Nodes senden ihren eigenen NIB zur Synchronisation anderer Nodes
 
+typedef struct __attribute__((packed)) {
+	uid_t dev_uid;				//0 -> ungültig / uint16_t -> gültig
+	dev_uid_t node_uids[MAX_NODES]; 	//Node-Priorität
+}dev_info_t;
+
+// Node-Info-Block NIB
+typedef struct __attribute__((packed)) {
+	int64_t ts;	//Timestamp zur Aktualitätsprüfung
+	dev_info_t dev_info[MAX_DEVICES]; //Position im Array entspricht Routing-Prio
+	dev_uid_t slot_info[MAX_SLOTS];
+}node_info_block_t;
+
+int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid);
+int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid);
+void nib_clear_all(node_info_block_t *pnib);
+
+// ---------------------------------------------------------------------
 
 #endif  //__WIOG_DATA_H__

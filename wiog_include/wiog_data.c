@@ -99,55 +99,42 @@ void* get_next_entry (payload_t* pl, data_frame_t* dft) {
 
 // -----------------------------------------------------------------------------
 
-//Mesh - Prio-Data-Liste f. Repeater und Gateway
+//Node-INfo_Block NIB - Prio-Node-Liste f. Repeater und Gateway
 
-//Listenplatz einer uid suchen
-//bei uid == -1 -> ersten freien Platz zurückliefern
-int mesh_get_uid_ix(mesh_devices_t mds, int32_t uid){
+//Listenplatz im NodeInfoBlock einer uid suchen
+//bei uid == 0 -> ersten freien Platz zurückliefern
+int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid){
 	int res = -1;
 	for (int i=0; i< MAX_DEVICES; i++)
-		if (mds[i].uid == uid){
+		if (pnib->dev_info[i].dev_uid == uid){
 			res = i;
 			break;
 		}
 	return res;
 }
 
-int32_t mesh_get_priority(mesh_devices_t mds, uint16_t uid) {
+//Priorität eines Knotens (node_uid) für Kommunikation mit Device (dev_uid)
+//höchste Prio = 0
+//DevUID im NIB nicht gefunden = -1
+int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid ) {
 	int res = -1;
-	int ix = mesh_get_uid_ix(mds, uid);
-	if (ix >= 0)
-		res = mds[ix].priority;
+	int ix = nib_get_uid_ix(pnib, dev_uid);
+	for (int i = 0; i < MAX_NODES; i++) {
+		if (pnib->dev_info[ix].node_uids[i] == node_uid) {
+			res = i;
+			break;
+		}
+	}
 	return res;
 }
 
-int mesh_set_priority(mesh_devices_t mds, uint16_t uid, int32_t prio){
-	int ix = mesh_get_uid_ix(mds, uid);
-	if (ix < 0) {	//neuer Eintrag
-		ix = mesh_get_uid_ix(mds, -1);	//ersten freien Platz suchen
-		mds[ix].uid = uid;
-		mds[ix].interval_ms = 0;
-		mds[ix].standby = 0;
-	}
-	mds[ix].priority = prio;
-	mds[ix].ts = esp_timer_get_time();	//Timestamp
-	return ix;
-}
-
-//unbenutzte Einträge löschen
-#define MESH_PRIO_UNUSED_TIME_MS 6*STD
-
-void mesh_clear_list(mesh_devices_t mds) {
-	for (int i = 0; i < MAX_DEVICES; i++) {
-		//nach x time ohne schreibenden Zugriff -> Device aus mesh-prio-Liste löschen
-		if ((mds[i].uid >= 0) && ((mds[i].ts + MESH_PRIO_UNUSED_TIME_MS) < esp_timer_get_time() ))
-			mds[i].uid = -1;
-	}
-}
-
-//Liste initialisieren
-void mesh_clear_all(mesh_devices_t mds) {
-	for (int i = 0; i < MAX_DEVICES; i++) {
-		mds[i].uid = -1;
+//NIB initialisieren
+void nib_clear_all(node_info_block_t *pnib) {
+	int i;
+	pnib->ts = 0;
+	for (i = 0; i < MAX_SLOTS; i++) pnib->slot_info[i] = 0;
+	for (i = 0; i < MAX_DEVICES; i++) {
+		pnib->dev_info[i].dev_uid = 0;
+		for (int j = 0; j < MAX_NODES; j++) pnib->dev_info[i].node_uids[j] = 0;
 	}
 }

@@ -19,8 +19,11 @@
 
 
 #define MS 1/portTICK_PERIOD_MS	//1 Tick je 10ms
-#define WORKING_CHANNEL 3
-#define MAX_DEVICES		64		//Max 64 Devices lassen sich im Netzwerk verwalten
+#define WORKING_CHANNEL 3		//f. Enntwicklung, Kanal legt Raspi fest
+
+#define MAX_DEVICES	48			//Max n Devices lassen sich im Netzwerk verwalten (s. Meshliste)
+#define MAX_NODES	8			//Max n-1 Nodes + 1GW lassen sich verwalten
+#define MAX_SLOTS	8			//Anzahl der Node-Time-Slots
 
 static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .policy=WIFI_COUNTRY_POLICY_AUTO};
 
@@ -48,7 +51,7 @@ static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .p
 //#define MY_SPECIES				SPECIES_SENSOR
 #define FIRST_SLEEP_MS			3*SEK
 
-#define SLOT_TIME_MS 5000	//Repeater und Gateway - n µs
+#define SLOT_TIME_US 5000		//Repeater und Gateway - n ms
 
 
 #define AES_KEY_SZ 32	//Key - Länge in Bytes => 256Bit
@@ -76,6 +79,8 @@ static const mac_addr_t mac_actor    = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x03
 static const mac_addr_t mac_repeater = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x04 };
 
 
+typedef uint16_t dev_uid_t;	//16 Bit Geräte-UID -> Gefahr der ID-Dopplung !
+
 //entspricht dem letzten Byte der MAC-Adresse (mac5)
 typedef enum {
 	DUMMY = 0,
@@ -97,10 +102,10 @@ typedef enum {
 	ACK_FOR_CHANNEL,	//Repeater und GW antworten auf Kanalsuche
 	DATA_TO_GW,
     RETURN_FROM_GW,
-	DATA_TO_ACTOR,
+	DATA_TO_DEVICE,
 	RETURN_FROM_ACTOR,
 	SNR_INFO_TO_GW,		//Repeater meldet Empfangsgüte an Gateway
-//	REPEATED_TO_GW,
+	BC_NIB				//Boradcast Node Info Block
 } vtype_t;
 
 
@@ -160,7 +165,7 @@ typedef struct __attribute__((packed)){ //cb stellt Rx-Daten in die Rx-Queue
 
 typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
 	wiog_header_t wiog_hdr;
-	int64_t target_time;	//Sendezeitpunkt
+	int64_t target_time;	//Sendezeitpunkt -> obsolete !!!
 	uint8_t tx_max_repeat;	//Tx-Wiederholung 0 => es wird kein Ack erwartet
 	bool crypt_data;		//true -> Datenblock wird verschlüsselt
 	uint16_t data_len;		//Länge des Datenpaketes

@@ -20,7 +20,8 @@
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
 
-
+#define VERSION  3
+#define REVISION 0
 // --------------------------------------------------------------------------------
 
 uint8_t wifi_channel = WORKING_CHANNEL;
@@ -37,30 +38,16 @@ static xQueueHandle wiog_tx_queue;
 
 SemaphoreHandle_t return_timeout_Semaphore = NULL;
 
-mesh_devices_t mesh_devices;
+//Prioritäten und Slots (synchron in allen Nodes (incl gw))
+node_info_block_t nib;
 
-// Double-List ----------------------------------------
-//nur das erste empfangene Paket  einer ID wird verarbeitet, Wiederholungen werden verworfen
-//bester Empfangspegel an Repeater / Gateway - zu Regulierung Tx-Power von Sensoren
-typedef struct {
-	uint32_t frameid;	//Frame - ID
-	uint16_t uid;
-	species_t species;
-	int8_t txpwr;
-	uint8_t max_snr; 	//bestes SNR GW oder Repeater
-	uint8_t mac;	 	//MAC5 des GW/Rep mit höchstem SNR
-} double_entry_t;
+dev_uid_t dev_uid = 0;
 
-#define DBLS_SZ 16
-double_entry_t dbls[DBLS_SZ];
-uint8_t dbl_ix = 0;
-//-----------------------------------------------------
+uint32_t ack_id = 0;		//Vergleich mit FrameID
 
-uint8_t slot = 0;
 
 //Prototypen
-static void rx_data_processing_task(void *pvParameter);
-int get_dbls(uint32_t fid);
+
 
 
 //---------------------------------------------------------------------------------------------------------------
@@ -104,7 +91,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		if (pHdr->vtype == SCAN_FOR_CHANNEL) {
 			wiog_event_txdata_t tx_frame = {
 				.crypt_data = false,
-				.target_time = esp_timer_get_time() + slot * SLOT_TIME_MS,	//slot immer 0 ??
+				.target_time = 0,
 				.data_len = 0,
 				.data = NULL
 			};
@@ -198,9 +185,6 @@ printf("%s\n", buf);
 */
 
 
-
-
-
 		free(evt.data);
 	}	//while
 
@@ -215,9 +199,10 @@ void wiog_tx_processing_task(void *pvParameter) {
 	while ((xQueueReceive(wiog_tx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
 		uint16_t tx_len = get_blocksize(evt.data_len, AES_KEY_SZ) + sizeof(wiog_header_t);
+printf("Len: %d\n", tx_len);
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
-hexdump(evt.data, evt.data_len);
+
 		wifi_second_chan_t ch2;
 		esp_wifi_get_channel(&evt.wiog_hdr.channel, &ch2);
 
@@ -236,11 +221,22 @@ hexdump(evt.data, evt.data_len);
 			key[31] = (uint8_t)(u32>>=8);
 
 			cbc_encrypt(evt.data, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
+			printf("*****\n");
 		} else {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
-		esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+		evt.wiog_hdr.seq_ctrl = 0;
+		//max Wiederholungen bis ACK von GW oder Node
+		for (int i = 0; i <= evt.tx_max_repeat; i++) {
+			//Abbruch falls ID bestätigt wurde
+			if (ack_id == evt.wiog_hdr.frameid)	break;
+			//Frame senden
+			ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false)); //tx_len 24 .. 1500
+			evt.wiog_hdr.seq_ctrl++;
+			//min. Ruhezeit zw. zwei Sendungen
+			vTaskDelay(50*MS);
+		}
 
 		free(evt.data);
 	}
@@ -248,49 +244,204 @@ hexdump(evt.data, evt.data_len);
 
 
 
-//Datenframe managed an actor senden
-bool send_data_frame(payload_t pl) {
-	//wiog_header setzen
+//Datenframe managed an Species (Sensor od. Actor) senden
+void send_data_frame(uint8_t* buf, species_t species) {
+
+	uint8_t len = buf[0];		//Längenbyte
+	uint8_t *data = &buf[1];	//Datenbereich
+
 	wiog_event_txdata_t tx_frame;
-	tx_frame.wiog_hdr = wiog_get_dummy_header(ACTOR, GATEWAY);
-	tx_frame.wiog_hdr.uid = pl.man.uid;
+	tx_frame.wiog_hdr = wiog_get_dummy_header(species, GATEWAY);
+	tx_frame.wiog_hdr.uid = dev_uid;
 	tx_frame.wiog_hdr.species = GATEWAY;
-	tx_frame.wiog_hdr.vtype = DATA_TO_ACTOR;
-	int len = pl.ix + sizeof(management_t);
+	tx_frame.wiog_hdr.vtype = DATA_TO_DEVICE;
+	tx_frame.wiog_hdr.frameid = esp_random();
+	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 
-	//Wiederholschleife
-	for (int i = 0; i < 6; i++) {
-		tx_frame.wiog_hdr.frameid = esp_random();		//Frame-ID erzeugen
-		actual_frame_id = tx_frame.wiog_hdr.frameid;
+	tx_frame.data = malloc(len);
+	memcpy(tx_frame.data, data, len);
+	tx_frame.data_len = len;
+	tx_frame.crypt_data = true;
+	tx_frame.target_time = 0;
 
-		tx_frame.data = malloc(len);
-		memcpy(tx_frame.data, &pl.man, len);
-		tx_frame.data_len = len;
-		tx_frame.crypt_data = true;
-		tx_frame.target_time = 0;
+	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
+		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 
-		if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-			free(tx_frame.data);
-			ESP_LOGW("Tx-Queue: ", "Tx Data fail");
-		}
-		tx_frame.wiog_hdr.seq_ctrl++;
+	free(tx_frame.data);	//Feigabe hier korrekt ?
+}
 
-		//Antwort-Frame abwarten
-		if (xSemaphoreTake(return_timeout_Semaphore, 80*MS) == pdTRUE)
-			break;
-
-	}	//for Tx-Versuche
-
-	//Frame-ID wurde bei erfolgreichem Response verfälscht
-	bool res = actual_frame_id != tx_frame.wiog_hdr.frameid;
-	if (!res) cnt_no_response++;
-	return res;
+//Eintragen der Management-Daten in den Payload
+//Aufrufer aktualisiert später die Anzahl der Datensätze
+void set_management_data (management_t* pMan) {
+	pMan->sid = SYSTEM_ID;
+	pMan->uid = dev_uid;
+	pMan->wifi_channel = wifi_channel;
+	pMan->version = VERSION;
+	pMan->revision = REVISION;
+	pMan->cycle = 0;
+	pMan->cnt_no_response = cnt_no_response;
+	int8_t pwr;
+	esp_wifi_get_max_tx_power(&pwr);
+	pMan->cnt_entries = 0;
+//	ixtxpl = 0;
 }
 
 
+//aktuellen NodeInfoBlock im Netz verteilen, kein ACK erwartet
+//incl. Managementdaten
+void brodcast_nib() {
+	//Länge der Nutzdatenblöcke
+	int len_man = sizeof(management_t);
+	int len_nib = sizeof(node_info_block_t);
+
+	//wiog_header setzen
+	wiog_event_txdata_t tx_frame;
+	tx_frame.wiog_hdr = wiog_get_dummy_header(DUMMY, GATEWAY);
+	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.species = GATEWAY;
+	tx_frame.wiog_hdr.vtype = BC_NIB;
+	tx_frame.wiog_hdr.frameid = esp_random();
+	tx_frame.crypt_data = true;		//NIB verschlüsselt
+	tx_frame.tx_max_repeat = 0;		//keine Wiederholung = kein ACK erwartet
+	int len = len_nib + len_man;
+	tx_frame.data = malloc(len);
+	//ManagementData voranstellen (f. Auswertung SID)
+	management_t man;
+	set_management_data(&man);
+	memcpy(&tx_frame.data[0], &man, sizeof(management_t));
+	memcpy(&tx_frame.data[len_man], &nib, len_nib);
+	//Gesamt-Daten-Länge
+	tx_frame.data_len = len;
+	tx_frame.target_time = 0;
+
+	//Datenpaket in Tx-Queue stellen, queued BY COPY !
+	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
+		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
+
+//	free(tx_frame.data);
+}
+
+void app_main(void) {
+	nvs_flash_init();
+	esp_netif_init();
+
+	//Rx-Queue -> Verarbeitung empfangener Daten
+	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
+	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 8, NULL);
+
+	//Tx-Queue - Unterprogramme stellen zu sendende Daten in die Queue
+	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
+	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 2048, NULL, 5, NULL);
+
+//	xTaskCreate(wiog_manage_slots_task, "wiog_slots_task", 2048, NULL, 0, NULL);
+
+	return_timeout_Semaphore = xSemaphoreCreateBinary();
+
+	//Liste zu Geräteverwaltung löschen
+	nib_clear_all(&nib);
+
+//	bzero(dbls, sizeof(dbls));
+
+	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+   	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );tstop(0);
+	ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) ); // set country for channel range [1 .. 13]
+	ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
+    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_LR));
+	esp_wifi_set_promiscuous(true);
+	esp_wifi_set_promiscuous_rx_cb(&wiog_receive_packet_cb);
+
+	ESP_ERROR_CHECK( esp_wifi_start() );
+
+
+	esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE);
+	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+
+	wifi_promiscuous_filter_t filter;
+	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
+	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
+
+	//Gateway mit max tx power
+	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
+	int8_t maxpwr;
+	esp_wifi_get_max_tx_power(&maxpwr);
+	printf("Set Tx-Power: %.2f dBm\n", maxpwr *0.25);
+
+	dev_uid = get_uid();	//Geräte-ID berechnen
+
+	while (true) {
+
+		payload_t pl;
+		bzero(&pl, sizeof(payload_t));
+		pl.ix = 0;
+		pl.man.sid = SYSTEM_ID;
+		pl.man.wifi_channel = wifi_channel;
+		pl.man.uid = 34640;						//!!!!!
+
+		add_entry_I32(&pl, 1, 2, 3, 12345678 );
+		add_entry_I64(&pl, 11, 22, 33,  987654321);
+
+		char txt[] = "ABCDEF";
+		add_entry_str(&pl, 55, 77, txt );
+
+		add_entry_I32(&pl, 111, 222, 255, 888888 );
+
+//		send_data_frame((uint8_t*) &pl, ACTOR);
+
+		brodcast_nib();
+
+		vTaskDelay(15000*MS);
+	}
+
+
+}
+
+// *******************************************************************************************************
+//Obsolete Funktionen / Variablen /etc
+
+/*
+// Double-List ----------------------------------------
+//nur das erste empfangene Paket  einer ID wird verarbeitet, Wiederholungen werden verworfen
+//bester Empfangspegel an Repeater / Gateway - zu Regulierung Tx-Power von Sensoren
+typedef struct {
+	uint32_t frameid;	//Frame - ID
+	uint16_t uid;
+	species_t species;
+	int8_t txpwr;
+	uint8_t max_snr; 	//bestes SNR GW oder Repeater
+	uint8_t mac;	 	//MAC5 des GW/Rep mit höchstem SNR
+} double_entry_t;
+
+#define DBLS_SZ 16
+double_entry_t dbls[DBLS_SZ];
+uint8_t dbl_ix = 0;
+//-----------------------------------------------------
+
+uint8_t slot = 0;
+
+//static void rx_data_processing_task(void *pvParameter);
+int get_dbls(uint32_t fid);
+
+*/
+
+/*
+//Double-Liste durchsuchen, ob Eintrag bereits vorhanden ist
+//Return: ix des Eintrages, -1 wenn nicht vorhanden
+int get_dbls(uint32_t fid) {
+	int res = -1;
+	for (int dix = 0; dix < DBLS_SZ; dix++ ){
+		if (dbls[dix].frameid == fid) {
+			res = dix;
+			break;
+		}
+	}
+	return res;
+}
+*/
+
 
 //---------------------------------------------------------------------------------------------------
-
+/*
 //Rx-Quittung senden und Weiterleitung der Daten an PiGateway
 static void rx_data_processing_task(void *pvParameter){
 	uint32_t *id = (uint32_t*)pvParameter;
@@ -335,10 +486,15 @@ printf("FID:%08x | UID:%05d | SP:%02d | SNR:%02d | MAC:%02x | PWR:%02d\n",
 	free(id);
 	vTaskDelete(NULL);
 }
+*/
+
+
+
 
 
 // Slot - Management ---------------------------------------------------------------
 
+/*
 // Slot List ------------------------------------------
 //Verwaltung der Repeater-Slots
 typedef struct __attribute__((packed)){
@@ -418,88 +574,5 @@ void wiog_manage_slots_task(void *pvParameter) {
 		vTaskDelay(5*1000*MS);
 	} //while
 }
-
+*/
 //----------------------------------------------------------------------
-
-void app_main(void) {
-	nvs_flash_init();
-	esp_netif_init();
-
-	//Rx-Queue -> Verarbeitung empfangener Daten
-	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
-	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 8, NULL);
-
-	//Tx-Queue - Unterprogramme stellen zu sendende Daten in die Queue
-	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
-	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 2048, NULL, 5, NULL);
-
-	xTaskCreate(wiog_manage_slots_task, "wiog_slots_task", 2048, NULL, 0, NULL);
-
-	return_timeout_Semaphore = xSemaphoreCreateBinary();
-
-	mesh_clear_all(mesh_devices);
-	bzero(dbls, sizeof(dbls));
-
-	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-   	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );tstop(0);
-	ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) ); // set country for channel range [1 .. 13]
-	ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
-    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_LR));
-	esp_wifi_set_promiscuous(true);
-	esp_wifi_set_promiscuous_rx_cb(&wiog_receive_packet_cb);
-
-	ESP_ERROR_CHECK( esp_wifi_start() );
-
-
-	esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE);
-	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-
-	wifi_promiscuous_filter_t filter;
-	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
-	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
-
-	//Gateway mit max tx power
-	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
-	int8_t maxpwr;
-	esp_wifi_get_max_tx_power(&maxpwr);
-	printf("Set Tx-Power: %.2f dBm\n", maxpwr *0.25);
-
-
-	while (true) {
-
-		payload_t pl;
-		bzero(&pl, sizeof(payload_t));
-		pl.ix = 0;
-		pl.man.sid = SYSTEM_ID;
-		pl.man.wifi_channel = wifi_channel;
-		pl.man.uid = 34640;						//!!!!!
-
-		add_entry_I32(&pl, 1, 2, 3, 12345678 );
-		add_entry_I64(&pl, 11, 22, 33,  987654321);
-
-		char txt[] = "ABCDEF";
-		add_entry_str(&pl, 55, 77, txt );
-
-		add_entry_I32(&pl, 111, 222, 255, 888888 );
-
-//		send_data_frame(pl);
-
-		vTaskDelay(5000*MS);
-	}
-
-
-}
-
-//Double-Liste durchsuchen, ob Eintrag bereits vorhanden ist
-//Return: ix des Eintrages, -1 wenn nicht vorhanden
-int get_dbls(uint32_t fid) {
-	int res = -1;
-	for (int dix = 0; dix < DBLS_SZ; dix++ ){
-		if (dbls[dix].frameid == fid) {
-			res = dix;
-			break;
-		}
-	}
-	return res;
-}
