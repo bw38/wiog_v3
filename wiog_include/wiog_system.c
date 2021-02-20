@@ -89,7 +89,7 @@ int cbc_encrypt(uint8_t *data, uint8_t *crypted, int data_len, uint8_t *key, int
 	esp_aes_setkey(&ctx, key, key_len*8);
 	esp_aes_crypt_cbc( &ctx, ESP_AES_ENCRYPT, block_sz, iv_crypt, inbuf, crypted );
 	esp_aes_free( &ctx );
-printf("+++++\n");
+
 	return block_sz;
 }
 
@@ -107,9 +107,9 @@ int cbc_decrypt(uint8_t *crypted, uint8_t *data, int crypt_len, uint8_t *key, in
 	esp_aes_context ctx;
 	esp_aes_init(&ctx);
 	esp_aes_setkey(&ctx, key, key_len*8);
-	esp_aes_crypt_cbc( &ctx, ESP_AES_DECRYPT, crypt_len, iv_decrypt, crypted, data );
+	int res = esp_aes_crypt_cbc( &ctx, ESP_AES_DECRYPT, crypt_len, iv_decrypt, crypted, data );
 	esp_aes_free( &ctx );
-	return 0;
+	return res;
 }
 
 //uid aus Wifi-efuse-MAC berechnen Wifi-Interface initialisiert

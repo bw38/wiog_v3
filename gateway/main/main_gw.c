@@ -93,12 +93,14 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				.crypt_data = false,
 				.target_time = 0,
 				.data_len = 0,
-				.data = NULL
+				.data = NULL,
 			};
 			tx_frame.wiog_hdr = evt.wiog_hdr;
 			tx_frame.wiog_hdr.mac_from[5] = GATEWAY;
 			tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
 			tx_frame.wiog_hdr.vtype = ACK_FOR_CHANNEL;
+			tx_frame.wiog_hdr.frameid = 0;
+			ack_id = 1;
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
 					ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 			}
@@ -199,7 +201,6 @@ void wiog_tx_processing_task(void *pvParameter) {
 	while ((xQueueReceive(wiog_tx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
 		uint16_t tx_len = get_blocksize(evt.data_len, AES_KEY_SZ) + sizeof(wiog_header_t);
-printf("Len: %d\n", tx_len);
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
 
@@ -220,8 +221,7 @@ printf("Len: %d\n", tx_len);
 			key[30] = (uint8_t)(u32>>=8);
 			key[31] = (uint8_t)(u32>>=8);
 
-			cbc_encrypt(evt.data, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
-			printf("*****\n");
+			int blk_sz = cbc_encrypt(evt.data, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
 		} else {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
@@ -229,8 +229,8 @@ printf("Len: %d\n", tx_len);
 		evt.wiog_hdr.seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
-			//Abbruch falls ID bestätigt wurde
-			if (ack_id == evt.wiog_hdr.frameid)	break;
+			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
+			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false)); //tx_len 24 .. 1500
 			evt.wiog_hdr.seq_ctrl++;
@@ -239,7 +239,7 @@ printf("Len: %d\n", tx_len);
 		}
 
 		free(evt.data);
-	}
+	} //while Queue
 }
 
 
@@ -289,7 +289,7 @@ void set_management_data (management_t* pMan) {
 
 //aktuellen NodeInfoBlock im Netz verteilen, kein ACK erwartet
 //incl. Managementdaten
-void brodcast_nib() {
+void broadcast_nib() {
 	//Länge der Nutzdatenblöcke
 	int len_man = sizeof(management_t);
 	int len_nib = sizeof(node_info_block_t);
@@ -309,16 +309,20 @@ void brodcast_nib() {
 	management_t man;
 	set_management_data(&man);
 	memcpy(&tx_frame.data[0], &man, sizeof(management_t));
+nib.ts = esp_timer_get_time();
+nib.dev_info[0].dev_uid=0x1234;
+nib.dev_info[0].node_uids[1]=0x5678;
+nib.slot_info[1] = dev_uid;
 	memcpy(&tx_frame.data[len_man], &nib, len_nib);
 	//Gesamt-Daten-Länge
 	tx_frame.data_len = len;
 	tx_frame.target_time = 0;
 
 	//Datenpaket in Tx-Queue stellen, queued BY COPY !
+	//data wird in tx_processing_task freigegeben
 	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 
-//	free(tx_frame.data);
 }
 
 void app_main(void) {
@@ -331,7 +335,7 @@ void app_main(void) {
 
 	//Tx-Queue - Unterprogramme stellen zu sendende Daten in die Queue
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
-	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 2048, NULL, 5, NULL);
+	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 4096, NULL, 5, NULL);
 
 //	xTaskCreate(wiog_manage_slots_task, "wiog_slots_task", 2048, NULL, 0, NULL);
 
@@ -388,7 +392,7 @@ void app_main(void) {
 
 //		send_data_frame((uint8_t*) &pl, ACTOR);
 
-		brodcast_nib();
+		broadcast_nib();
 
 		vTaskDelay(15000*MS);
 	}

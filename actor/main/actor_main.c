@@ -196,7 +196,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		}	// Ende Kanalanfrage ----------------------------------------------------------------
 
 		else
-		if ((pHdr->vtype == BC_NIB) && (species == REPEATER))	{
+		if ((pHdr->vtype == BC_NIB) && (species == REPEATER)) {
 			int blocksz = evt.data_len;
 			if (blocksz > 0) {
 				//CBC-AES-Key
@@ -209,23 +209,20 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 				key[31] = (uint8_t)(u32>>=8);
 
 				uint8_t payload[blocksz];
-				cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key));
-
-				//Verarbeitung der Daten, Gültigkeit über SollLänge prüfen
-				if (evt.data_len == sizeof(management_t) + sizeof(node_info_block_t)) {
+				if (cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key)) == 0) {
 					//Management-Header des Gateway
 					management_t* pGw_hdr = malloc(sizeof(management_t));
-					//Interval des nächsten Betriebszyklus
 					memcpy(pGw_hdr, payload, sizeof(management_t));
 
 					//Systemzugehörigkeit prüfen
 					if (pGw_hdr->sid == SYSTEM_ID) {
 						//Datenbereich im Anschluss an Management-Data
 						node_info_block_t *pnib = (node_info_block_t*) &payload[sizeof(management_t)];
+
 						if (pnib->ts > nib.ts) //Aktualitätsprüfung
-							memcpy(pnib, &nib, sizeof(node_info_block_t));
-printf("NIB TS: %lld\n", nib.ts);
-hexdump((uint8_t*) nib.dev_info, sizeof(nib.dev_info));
+							memcpy(&nib, pnib, sizeof(node_info_block_t));
+printf("NIB TS: %lld %lld\n", nib.ts, pnib->ts);
+hexdump((uint8_t*) nib.dev_info, 64);
 hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 					}
 				}
@@ -426,8 +423,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		evt.wiog_hdr.seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
-			//Abbruch falls ID bestätigt wurde
-			if (ack_id == evt.wiog_hdr.frameid)	break;
+			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
+			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
 			evt.wiog_hdr.seq_ctrl++;
@@ -484,7 +481,47 @@ void set_management_data (management_t* pMan) {
 	ixtxpl = 0;
 }
 
+//aktuellen NodeInfoBlock an andere Nodes im Netz verteilen, kein ACK erwartet
+//incl. Managementdaten
+void broadcast_nib() {
+	//Länge der Nutzdatenblöcke
+	int len_man = sizeof(management_t);
+	int len_nib = sizeof(node_info_block_t);
 
+	//wiog_header setzen
+	wiog_event_txdata_t tx_frame;
+	tx_frame.wiog_hdr = wiog_get_dummy_header(DUMMY, REPEATER);
+	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.species = REPEATER;
+	tx_frame.wiog_hdr.vtype = BC_NIB;
+	tx_frame.wiog_hdr.frameid = esp_random();
+	tx_frame.crypt_data = true;		//NIB verschlüsselt
+	tx_frame.tx_max_repeat = 0;		//keine Wiederholung = kein ACK erwartet
+	int len = len_nib + len_man;
+	tx_frame.data = malloc(len);
+	//ManagementData voranstellen (f. Auswertung SID)
+	management_t man;
+	set_management_data(&man);
+	memcpy(&tx_frame.data[0], &man, sizeof(management_t));
+	memcpy(&tx_frame.data[len_man], &nib, len_nib);
+	//Gesamt-Daten-Länge
+	tx_frame.data_len = len;
+	tx_frame.target_time = 0;
+
+	//Datenpaket in Tx-Queue stellen, queued BY COPY !
+	//data wird in tx_processing_task freigegeben
+	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
+		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
+
+}
+
+//in Node-Betrieb Zeitgesteurt eigenen NIB anderen Nodes anbieten
+IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
+	while (true) {
+		vTaskDelay(6000*MS);
+		broadcast_nib();
+	}
+}
 // ---------------------------------------------------------------------------------
 
 //WIOG-Kanal setzen
@@ -499,10 +536,10 @@ void wiog_set_channel(uint8_t ch) {
 			.data = NULL,
 			.target_time = 0
 		};
-		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
+		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, ACTOR);
 		tx_frame.wiog_hdr.vtype = SCAN_FOR_CHANNEL;
 		tx_frame.wiog_hdr.uid = dev_uid;
-		tx_frame.wiog_hdr.species = species;
+		tx_frame.wiog_hdr.species = ACTOR;	//Scan als Actor
 		tx_frame.wiog_hdr.frameid = 0;
 		ack_id = 1;	//Abbruch in Tx-Task verhindern
 
@@ -512,7 +549,7 @@ void wiog_set_channel(uint8_t ch) {
 			//Tx-Frame in Tx-Queue stellen
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 					ESP_LOGW("Tx-Queue: ", "Scan fail");
-			vTaskDelay(30*MS);
+			vTaskDelay(50*MS);
 			if (wifi_channel != 0) {
 				cnt_no_response = 0;
 				break;
@@ -555,13 +592,15 @@ void app_main(void) {
 
 	//Rx-Queue -> Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
-	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 2048, NULL, 12, NULL);
+	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 12, NULL);
 
 	//Tx-Queue - Unterprogramme stellen zu sendende Daten in die Queue
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
-	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 2048, NULL, 5, NULL);
+	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 4096, NULL, 5, NULL);
 
 	return_timeout_Semaphore = xSemaphoreCreateBinary();
+	if (species == REPEATER)
+		xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 1024, NULL, 1, NULL);
 
 	//Liste zu Geräteverwaltung löschen
 	nib_clear_all(&nib);

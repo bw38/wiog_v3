@@ -276,7 +276,7 @@ void wiog_set_channel(uint8_t ch) {
 					ESP_LOGW("Tx-Queue: ", "Scan fail");
 printf("Scan Channel: %d\n", ch);
 
-			vTaskDelay(30*MS);
+			vTaskDelay(50*MS);
 			if (rtc_wifi_channel != 0) {
 				rtc_no_response_cnt = 0;
 				break;
