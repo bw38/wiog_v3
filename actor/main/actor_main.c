@@ -96,6 +96,7 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //Datenläne ohne WIOG-Header und  FCS
 	frame.data = (uint8_t*)malloc(frame.data_len);
 	memcpy(frame.data, &ipkt->data, frame.data_len);
+	frame.timestamp = esp_timer_get_time();	//Empfangszeitpunkt (sinnhaft ??)
 
 	if (xQueueSend(wiog_rx_queue, &frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("wiog_rx_cb: ", "receive queue fail");

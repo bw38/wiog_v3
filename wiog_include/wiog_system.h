@@ -145,7 +145,7 @@ static const wiog_header_t dummy_header = {
 };
 
 
-//Payload
+//Payload (Wifi Rx)
 typedef struct __attribute__((packed)){
 	wiog_header_t header;
 	uint8_t *data;
@@ -171,6 +171,14 @@ typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
 	uint16_t data_len;		//Länge des Datenpaketes
 	uint8_t  *data;			//Pointer auf Datenpaket
 } wiog_event_txdata_t;
+
+
+// UART - Handling
+// --------------------------
+typedef struct __attribute__((packed)){
+	uint16_t  data_len;
+	uint8_t   data[1024];
+} uart_payload_t;
 
 // -----------------------------------------------------------------------------------------
 
