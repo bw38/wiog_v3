@@ -57,28 +57,29 @@ void uart0_init() {
 
 
 //Payload in Frame packen, Frame-Typ kennzeichnen, CRC-Summe berechnen und über UART senden
-void send_uart_frame(const void *pl, uint8_t szup, char cFTyp)
+void send_uart_frame(const void *pl, uint16_t szup, char cFTyp)
 {
 	char gwLoad[256] = "$JR*";	//Max
 	gwLoad[4] = cFTyp;
-	gwLoad[5] = (char) szup;
-	if (szup > 0) memcpy(gwLoad + 6, pl, szup);
-	gwLoad[szup + 6] = cFTyp;
+	gwLoad[5] = (char) (szup & 0xFF);
+	gwLoad[6] = (char) ((szup >> 8) & 0xFF);
+	if (szup > 0) memcpy(gwLoad + 7, pl, szup);
+	gwLoad[szup + 7] = cFTyp;
 	union int16_tt crc;
 	crc.i16 = crc16((uint8_t*)gwLoad, szup + 7);
-	gwLoad[szup + 7] = crc.l8;
-	gwLoad[szup + 8] = crc.h8;
-	gwLoad[szup + 9] = '\n';
-	uart_write_bytes(UART_NUM_0, gwLoad, szup + 10);//zum RPi senden via UART
+	gwLoad[szup + 8] = crc.l8;
+	gwLoad[szup + 9] = crc.h8;
+	gwLoad[szup + 10] = '\n';
+	uart_write_bytes(UART_NUM_0, gwLoad, szup + 11);//zum RPi senden via UART
 }
 
-#define BUF_SIZE (1024)
-#define RD_BUF_SIZE (BUF_SIZE)
+//#define BUF_SIZE (1024)
+//#define RD_BUF_SIZE (BUF_SIZE)
 
 // UART Zeichenempfang
 IRAM_ATTR void rx_uart_event_task(void *pvParameters)
 {
-    uint8_t data[1024];
+    uint8_t data[256];
     int fcUART = 0;
     char rx_char;
     char cFTyp = ' ';
@@ -110,7 +111,7 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
             	{
             		//FlowControl UART-Rx-Frame
             		// $ R J * [cFTyp][lenPL(L)][lenPL(H)][Payload][cFTyp][lCRC](hCRC][\n]
-            		// 0 1 2 3    4       5         6         7       8      9    10
+            		// 0 1 2 3    4       5         6         7       8      9    10   11
             		rx_char = data[i];
             		line[ixLine] = data[i];
             		ixLine++;
@@ -178,7 +179,15 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         							} else {
         								logE("Error : Length NIB");
         							}
+        						} //NIB
+        						else if (cFTyp == 'y') {	//Test Loop
+
+        							logLV("Empfangen: ", pl.data_len);
+        							send_uart_frame(pl.data, pl.data_len, 'Y');
+LED_BL_TOGGLE;
         						}
+
+
 /*        						//Framebehandlung
         						if (cFTyp == 'a') //GW-Response an Device senden
         						{
@@ -293,7 +302,7 @@ void logL(char *text)
 void logLV(char *text, int val)
 {
 	char str[64];
-	sprintf(str, "%s%d",text,val);
+	sprintf(str, "%s%d", text, val);
 	logL(str);
 }
 

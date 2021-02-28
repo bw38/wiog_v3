@@ -9,10 +9,9 @@
 #define MAIN_RS232_H_
 
 void uart0_init();
+void send_uart_frame(const void *pl, uint16_t szup, char cFTyp);
 void rx_uart_event_task(void *pvParameters);
 
-//Prototypen
-void send_uart_frame(const void *pl, uint8_t szup, char cFTyp);
 void logL(char *text);
 void logE(char *text);
 void logW(char *text);

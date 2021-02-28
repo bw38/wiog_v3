@@ -12,7 +12,6 @@
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
-#include "driver/gpio.h"
 #include "string.h"
 #include "mbedtls/aes.h"
 #include "esp32/rom/crc.h"
@@ -25,6 +24,7 @@
 #define VERSION  3
 #define REVISION 0
 // --------------------------------------------------------------------------------
+
 
 uint8_t wifi_channel = WORKING_CHANNEL;
 uint16_t  cnt_no_response;
@@ -328,6 +328,15 @@ nib.slot_info[1] = dev_uid;
 void app_main(void) {
 	nvs_flash_init();
 	esp_netif_init();
+
+	//Status-LED
+    gpio_set_direction(LED_BL, GPIO_MODE_INPUT_OUTPUT);
+    gpio_set_direction(LED_GN, GPIO_MODE_INPUT_OUTPUT);
+    gpio_set_direction(LED_RT, GPIO_MODE_INPUT_OUTPUT);
+
+    LED_STATUS_ON;
+    LED_GN_OFF;
+    LED_RT_OFF;
 
 	//Rx-Queue -> Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
