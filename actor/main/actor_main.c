@@ -66,11 +66,21 @@ static xQueueHandle wiog_tx_queue;
 //Prioritäten und Slots (synchron in allen Nodes (incl gw))
 node_info_block_t nib;
 
+//Node sammelt Device-SNR und schickt Daten Zyklisch an GW --------------
+//SNR-Buffer
+#define MAX_SNR_BUF_ENTRIES 16
+struct snr_buf_entry {	//einzelner Eintrag
+	dev_uid_t dev_uid;
+	uint8_t snr;
+};
+struct snr_buf_entry snr_buf[MAX_SNR_BUF_ENTRIES];	//Statisches Array
+uint8_t ix_snr_buf = 0;		//Index aktuelle Position
+bool ov_snr_buf = false;	//Overflow-Flag
+//------------------------------------------------------------------------
 
 SemaphoreHandle_t return_timeout_Semaphore = NULL;
 
 uint32_t ack_id = 0;		//Vergleich mit FrameID
-
 
 //Prototypen
 //static void repeat_frame_to_gw_task (void *pvParameter);
@@ -179,7 +189,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			ptx_frame2->wiog_hdr.mac_from[5] = REPEATER;
 			ptx_frame2->wiog_hdr.mac_to[5] = GATEWAY;
 			ptx_frame2->wiog_hdr.uid = dev_uid;				//eigene uid an GW
-			//Nutzdaten
+			//Nutzdaten - SNR direkt im Header senden
 			ptx_frame2->wiog_hdr.vtype = SNR_INFO_TO_GW;
 			ptx_frame2->wiog_hdr.tagA = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;	//Rx - SNR von device
 			ptx_frame2->wiog_hdr.tagC = evt.wiog_hdr.uid;	//uid des devices - info
@@ -229,6 +239,20 @@ hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 				}
 			}
 		}	//if BC_NIB
+
+		else
+		//DataFrame Sensor/Actor/Node ==> GW
+		//SNR zwischenspeichern (Rx-Quality am Node)
+		//Prüfen, ob Node Prio zur Weiterleitung hat (NIB)
+		if ((pHdr->vtype == DATA_TO_GW) && (species == REPEATER)) {
+			snr_buf[ix_snr_buf].dev_uid = evt.wiog_hdr.uid;
+			snr_buf[ix_snr_buf].snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
+			ix_snr_buf++;
+			if (ix_snr_buf == MAX_SNR_BUF_ENTRIES){
+				ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
+				ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
+			}
+		}
 
 /*
 		else
@@ -440,10 +464,9 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 // Datenverarbeitung ----------------------------------------------------------------------------
 
 //Datenframe managed an Gateway senden
-void send_data_frame(uint8_t* buf) {
+void send_data_frame(uint8_t* buf, uint16_t len) {
 
-	uint8_t len = buf[0];		//Längenbyte
-	uint8_t *data = &buf[1];	//Datenbereich
+	uint8_t *data = &buf[0];	//Datenbereich
 
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
@@ -523,6 +546,26 @@ IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 		broadcast_nib();
 	}
 }
+
+//Node sendet 1x je min Status-Frame mit Rx-Quality der empfangenen Devices
+IRAM_ATTR void wiog_snr_info_task(void *pvParameter) {
+	uint8_t loop = 0;
+	while (true) {
+		vTaskDelay(10000*MS);
+		//SNR-Info zyklisch oder kurz vor Overflow senden
+		if ((loop == 6) || (ix_snr_buf > MAX_SNR_BUF_ENTRIES - 3)) {
+			//falls Overflow registriert wurde (ix -> 0) -> gesamten Puffer verwenden
+			if (ov_snr_buf) ix_snr_buf = MAX_SNR_BUF_ENTRIES -1;
+			//Einträge von hinten auswerten
+			for (int i = ix_snr_buf; i >= 0; i--) {
+
+			}
+			//Buffer reset
+			ix_snr_buf = 0;
+			ov_snr_buf = false;
+		}
+	}
+}
 // ---------------------------------------------------------------------------------
 
 //WIOG-Kanal setzen
@@ -600,9 +643,10 @@ void app_main(void) {
 	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 4096, NULL, 5, NULL);
 
 	return_timeout_Semaphore = xSemaphoreCreateBinary();
-	if (species == REPEATER)
-		xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 1024, NULL, 1, NULL);
-
+	if (species == REPEATER) {
+		xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 1024, NULL, 2, NULL);
+		xTaskCreate(wiog_snr_info_task, "wiog_snr:info_task", 1024, NULL, 2, NULL);
+	}
 	//Liste zu Geräteverwaltung löschen
 	nib_clear_all(&nib);
 

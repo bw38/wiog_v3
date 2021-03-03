@@ -91,6 +91,7 @@ void* get_next_entry (payload_t* pl, data_frame_t* dft) {
 			pl->ix += sizeof(df_str_t) /*- sizeof(ent->txt) */+ ent->length;
 			break;
 		}
+
 		default: entry = NULL;
 	}
 

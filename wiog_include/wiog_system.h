@@ -104,7 +104,7 @@ typedef enum {
     RETURN_FROM_GW,
 	DATA_TO_DEVICE,
 	RETURN_FROM_ACTOR,
-	SNR_INFO_TO_GW,		//Repeater meldet Empfangsgüte an Gateway
+	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway
 	BC_NIB				//Boradcast Node Info Block
 } vtype_t;
 

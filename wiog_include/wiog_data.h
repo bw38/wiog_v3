@@ -26,11 +26,11 @@ typedef struct __attribute__((packed)) {
 
 // --------------------------------------------------
 
-//veraltet
 typedef enum {
 	DF_I32 = 0,
 	DF_I64 = 1,
-	DF_STR = 2
+	DF_STR = 2,
+	DF_SNR = 3,
 }data_frame_t;
 
 typedef struct __attribute__((packed)) {
@@ -57,6 +57,17 @@ typedef struct __attribute__((packed)) {
 	uint8_t txt[];
 } df_str_t;
 
+// Node -> GW
+typedef struct __attribute__((packed)) {
+	uint8_t   frametype;	//const DEV_SNR
+	dev_uid_t dev_uid;
+	uint8_t   snr;
+} df_snr_t;
+
+static const df_snr_t dev_snr_0 = {
+	.frametype = DF_SNR,
+};
+
 // --------------------------------------------------------
 
 //#define MANAGEMENT_SZ 32
@@ -81,7 +92,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
 	management_t man;
-	uint8_t data[256];	//max Datenlänge !!!
+	uint8_t *data;	//max Datenlänge !!!
 	uint32_t ix;
 } payload_t;
 
@@ -106,20 +117,33 @@ extern void* get_next_entry (payload_t* pl, data_frame_t* dft);
 // Nodes senden ihren eigenen NIB zur Synchronisation anderer Nodes
 
 typedef struct __attribute__((packed)) {
-	uid_t dev_uid;				//0 -> ungültig / uint16_t -> gültig
+	dev_uid_t dev_uid;					//0 -> ungültig / uint16_t -> gültig
 	dev_uid_t node_uids[MAX_NODES]; 	//Node-Priorität
-}dev_info_t;
+} dev_info_t;
 
-// Node-Info-Block NIB
+// Node-Info-Block NIB	(888 Bytes)
 typedef struct __attribute__((packed)) {
-	int64_t ts;	//Timestamp zur Aktualitätsprüfung
-	dev_info_t dev_info[MAX_DEVICES]; //Position im Array entspricht Routing-Prio
+	int64_t ts;							//Timestamp zur Aktualitätsprüfung
 	dev_uid_t slot_info[MAX_SLOTS];
-}node_info_block_t;
+	dev_info_t dev_info[MAX_DEVICES]; 	//Position im Array entspricht Routing-Prio
+} node_info_block_t;
 
 int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid);
 int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid);
 void nib_clear_all(node_info_block_t *pnib);
+
+
+// Node-Device_Info
+// Einzel-Info eines Nodes zum GW: Dev_UID / SNR
+// GW-RPI sammelt die Infos und estellt zyklisch den NIB
+typedef struct __attribute__((packed)) {
+	dev_uid_t my_uid;
+	dev_uid_t dev_uid;
+	uint8_t   snr;
+} node_dev_info_t;
+
+
+
 
 // ---------------------------------------------------------------------
 
