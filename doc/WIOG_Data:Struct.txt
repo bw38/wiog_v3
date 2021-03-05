@@ -56,14 +56,17 @@ wiog_event_txdata_t            //Tx-Daten in die Tx-Queue stellen
     	uint16_t seq_ctrl;
     	//Vendor-Header 24..37      //Verwaltungsdaten
     	uint8_t vtype;
-    	uint8_t tagA;
-    	uint8_t tagB;
-    	int16_t tagC;
     	uint8_t species;
     	int8_t txpwr;
     	uint8_t channel;
     	uint16_t uid;
-    	uint32_t frameid;			//Frame-ID f. verify Ack, Random32    
+    	uint32_t frameid;			//Frame-ID f. verify Ack, Random32 
+    	uinion {					//Wahlweise freie Var oder next Interval im Ack
+    		uint8_t tagA;
+    		uint8_t tagB;
+    		int16_t tagC;
+    		uint32_t interval;
+    		}   
 	int64_t target_time;	        //Sendezeitpunkt -> obsolete !!!
 	uint8_t tx_max_repeat;	        //Tx-Wiederholung 0 => es wird kein Ack erwartet
 	bool crypt_data;		        //true -> Datenblock wird verschlüsselt
@@ -85,14 +88,17 @@ wiog_data_frame_t            //Payload Rx-Packets
     	uint16_t seq_ctrl;
     	//Vendor-Header 24..37      //Verwaltungsdaten
     	uint8_t vtype;
-    	uint8_t tagA;
-    	uint8_t tagB;
-    	int16_t tagC;
     	uint8_t species;
     	int8_t txpwr;
     	uint8_t channel;
     	uint16_t uid;
     	uint32_t frameid;			//Frame-ID f. verify Ack, Random
+    	uinion {					//Wahlweise freie Var oder next Interval im Ack
+    		uint8_t tagA;
+    		uint8_t tagB;
+    		int16_t tagC;
+    		uint32_t interval;
+    		}
 	uint8_t *data;
 
 // ***********************************************************************************************************************

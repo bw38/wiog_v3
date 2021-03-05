@@ -49,7 +49,7 @@ SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
 uint8_t   wifi_channel;
 uint16_t  cnt_no_response;
 uint32_t  cycle;
-dev_uid_t dev_uid; //Geräte-ID wird aus efuse_MAC berechnet
+dev_uid_t my_uid; //Geräte-ID wird aus efuse_MAC berechnet
 
 //Standard-Interval für Actoren
 uint32_t interval_ms = 60*1000;
@@ -188,7 +188,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			ptx_frame2->wiog_hdr = evt.wiog_hdr;
 			ptx_frame2->wiog_hdr.mac_from[5] = REPEATER;
 			ptx_frame2->wiog_hdr.mac_to[5] = GATEWAY;
-			ptx_frame2->wiog_hdr.uid = dev_uid;				//eigene uid an GW
+			ptx_frame2->wiog_hdr.uid = my_uid;				//eigene uid an GW
 			//Nutzdaten - SNR direkt im Header senden
 			ptx_frame2->wiog_hdr.vtype = SNR_INFO_TO_GW;
 			ptx_frame2->wiog_hdr.tagA = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;	//Rx - SNR von device
@@ -253,6 +253,22 @@ hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 				ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
 			}
 		}
+
+		else
+
+		//Frame an eigene UID adressiert
+		if (pHdr->uid == my_uid ) {
+
+			if (pHdr->vtype == ACK_FROM_GW) {
+				ack_id = pHdr->frameid;	//Tx-Wiederholungen stoppen
+				//Interval-Info auf Plausibilität prüfen
+				if ((pHdr->interval_ms >= ACTOR_MIN_SLEEP_TIME_MS) && (pHdr->interval_ms <= ACTOR_MAX_SLEEP_TIME_MS))
+					interval_ms = pHdr->interval_ms;
+				//bei Kanal-Abweichung Channel-Scan veranlassen
+				if (wifi_channel != pHdr->channel) wifi_channel = 0;
+			}
+		}
+
 
 /*
 		else
@@ -470,7 +486,7 @@ void send_data_frame(uint8_t* buf, uint16_t len) {
 
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
-	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = species;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
@@ -485,7 +501,7 @@ void send_data_frame(uint8_t* buf, uint16_t len) {
 	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 
-	free(tx_frame.data);	//Feigabe hier korrekt ?
+//	free(tx_frame.data);	//Feigabe hier korrekt ?
 }
 
 
@@ -493,7 +509,7 @@ void send_data_frame(uint8_t* buf, uint16_t len) {
 //Aufrufer aktualisiert später die Anzahl der Datensätze
 void set_management_data (management_t* pMan) {
 	pMan->sid = SYSTEM_ID;
-	pMan->uid = dev_uid;
+	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
@@ -515,7 +531,7 @@ void broadcast_nib() {
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(DUMMY, REPEATER);
-	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = REPEATER;
 	tx_frame.wiog_hdr.vtype = BC_NIB;
 	tx_frame.wiog_hdr.frameid = esp_random();
@@ -550,16 +566,24 @@ IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 //Node sendet 1x je min Status-Frame mit Rx-Quality der empfangenen Devices
 IRAM_ATTR void wiog_snr_info_task(void *pvParameter) {
 	uint8_t loop = 0;
+	payload_t pl;
+uint8_t test = 0;
 	while (true) {
-		vTaskDelay(10000*MS);
-		//SNR-Info zyklisch oder kurz vor Overflow senden
-		if ((loop == 6) || (ix_snr_buf > MAX_SNR_BUF_ENTRIES - 3)) {
-			//falls Overflow registriert wurde (ix -> 0) -> gesamten Puffer verwenden
-			if (ov_snr_buf) ix_snr_buf = MAX_SNR_BUF_ENTRIES -1;
-			//Einträge von hinten auswerten
-			for (int i = ix_snr_buf; i >= 0; i--) {
+		vTaskDelay(1000*MS);	//!!!!! Test 1s -> 10s
 
-			}
+snr_buf[ix_snr_buf].dev_uid = (uint16_t)esp_random();
+snr_buf[ix_snr_buf].snr = test++;
+ix_snr_buf++;
+
+		//SNR-Info senden - zyklisch oder kurz vor Overflow oder Overflow bereits erfolgt
+		if ((loop == 6) || (ix_snr_buf > MAX_SNR_BUF_ENTRIES - 3) || ov_snr_buf) {
+			//falls Overflow registriert wurde -> gesamten Puffer verwenden
+			if (ov_snr_buf) ix_snr_buf = MAX_SNR_BUF_ENTRIES -1;
+			//Datensätze als Payload
+			for (int i = 0; i < ix_snr_buf; i++)
+				add_entry_snr(&pl, snr_buf[ix_snr_buf].dev_uid, snr_buf[ix_snr_buf].snr);
+			//Data to GW
+			send_data_frame((uint8_t*)&pl, ix_snr_buf * sizeof(struct snr_buf_entry));
 			//Buffer reset
 			ix_snr_buf = 0;
 			ov_snr_buf = false;
@@ -582,7 +606,7 @@ void wiog_set_channel(uint8_t ch) {
 		};
 		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, ACTOR);
 		tx_frame.wiog_hdr.vtype = SCAN_FOR_CHANNEL;
-		tx_frame.wiog_hdr.uid = dev_uid;
+		tx_frame.wiog_hdr.uid = my_uid;
 		tx_frame.wiog_hdr.species = ACTOR;	//Scan als Actor
 		tx_frame.wiog_hdr.frameid = 0;
 		ack_id = 1;	//Abbruch in Tx-Task verhindern
@@ -644,8 +668,8 @@ void app_main(void) {
 
 	return_timeout_Semaphore = xSemaphoreCreateBinary();
 	if (species == REPEATER) {
-		xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 1024, NULL, 2, NULL);
-		xTaskCreate(wiog_snr_info_task, "wiog_snr:info_task", 1024, NULL, 2, NULL);
+		xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 4096, NULL, 2, NULL);
+		xTaskCreate(wiog_snr_info_task, "wiog_snr_info_task", 4096, NULL, 2, NULL);
 	}
 	//Liste zu Geräteverwaltung löschen
 	nib_clear_all(&nib);
@@ -669,7 +693,7 @@ void app_main(void) {
 	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
 	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
 
-	dev_uid = get_uid();	//Geräte-ID berechnen
+	my_uid = get_uid();	//Geräte-ID berechnen
 
 	//Wifi-Kanal-Scan
 	wiog_set_channel(wifi_channel);
@@ -679,7 +703,7 @@ void app_main(void) {
 
 
 //	wiog_rx_register_cb(rx_data_cb);	löschen
-	printf("Actor-UID: %d\n", dev_uid);
+	printf("Actor-UID: %d\n", my_uid);
 
 	while (true) {
 		//ggf Channel-Scan vweranlassen
@@ -691,7 +715,7 @@ void app_main(void) {
 		uint8_t data[sz+1];				//Byte 0 => Längenbyte
 		memcpy(&data[1], txt, sz);		//Byte 1 => Datenbereich
 		data[0] = sz;
-
+printf("Send Dummy-Data\n");
 //		send_data_frame(data);
 
 		vTaskDelay(interval_ms / portTICK_PERIOD_MS);

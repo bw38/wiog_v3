@@ -64,9 +64,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t   snr;
 } df_snr_t;
 
-static const df_snr_t dev_snr_0 = {
-	.frametype = DF_SNR,
-};
+
 
 // --------------------------------------------------------
 
@@ -92,7 +90,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
 	management_t man;
-	uint8_t *data;	//max Datenlänge !!!
+	uint8_t data[1024];	//max Datenlänge !!!
 	uint32_t ix;
 } payload_t;
 
@@ -103,6 +101,7 @@ extern void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st,
 extern void add_entry_I64 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int64_t val);
 extern void add_entry_buf (payload_t* pl, uint8_t type, uint8_t ix, uint8_t len, uint8_t* buf);
 extern void add_entry_str (payload_t* pl, uint8_t type, uint8_t ix, char* str);
+extern void add_entry_snr (payload_t* pl, dev_uid_t uid, uint8_t snr);
 extern void* get_next_entry (payload_t* pl, data_frame_t* dft);
 
 

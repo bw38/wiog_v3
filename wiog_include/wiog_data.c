@@ -73,6 +73,17 @@ void add_entry_str (payload_t* pl, uint8_t type, uint8_t ix, char* str) {
 	pl->man.cnt_entries++;
 }
 
+//Geräte-SNR-Info
+extern void add_entry_snr (payload_t* pl, dev_uid_t uid, uint8_t snr) {
+	df_snr_t ent = {
+		.frametype = DF_SNR,
+		.dev_uid = uid,
+		.snr = snr
+	};
+	memcpy(&pl->data[pl->ix], &ent, sizeof(df_snr_t));
+	pl->ix += sizeof(df_snr_t);
+	pl->man.cnt_entries++;
+}
 
 
 

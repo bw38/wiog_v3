@@ -87,7 +87,7 @@ typedef enum {
 	GATEWAY = 1,
 	SENSOR = 2,
 	ACTOR = 3,
-	REPEATER = 4	//4 .. n
+	REPEATER = 4,
 } species_t;
 
 //esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len, bool en_sys_seq);
@@ -100,7 +100,8 @@ typedef enum {
 	UNKNOWN = 0,
     SCAN_FOR_CHANNEL,	//Device sucht Kanal
 	ACK_FOR_CHANNEL,	//Repeater und GW antworten auf Kanalsuche
-	DATA_TO_GW,
+	DATA_TO_GW,			//DataFrame Device an Gateway
+	ACK_FROM_GW,		//Empfangsbestätigung des GW
     RETURN_FROM_GW,
 	DATA_TO_DEVICE,
 	RETURN_FROM_ACTOR,
@@ -119,14 +120,19 @@ typedef struct __attribute__((packed)){
 	uint16_t seq_ctrl;
 	//Vendor-Header 24..37
 	uint8_t vtype;
-	uint8_t tagA;
-	uint8_t tagB;
-	int16_t tagC;
 	uint8_t species;
 	int8_t txpwr;
 	uint8_t channel;
 	uint16_t uid;
 	uint32_t frameid;			//Frame-ID f. verify Ack, Random32
+	union {
+		struct {				//verwendbar als freie Daten oder interval im Ack-Frame
+			uint8_t tagA;		//Zusatz-Info Device -> GW
+			uint8_t tagB;
+			int16_t tagC;
+		};
+		uint32_t interval_ms;	//Interval-Info GW -> Device in ms, 0 => Sensor Standby for Data
+	};
 } wiog_header_t;
 
 static const wiog_header_t dummy_header = {
@@ -148,7 +154,7 @@ static const wiog_header_t dummy_header = {
 //Payload (Wifi Rx)
 typedef struct __attribute__((packed)){
 	wiog_header_t header;
-	uint8_t *data;
+	uint8_t *data[1024];
 } wiog_data_frame_t;
 
 

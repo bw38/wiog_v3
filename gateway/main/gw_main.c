@@ -29,7 +29,7 @@
 uint8_t wifi_channel = WORKING_CHANNEL;
 uint16_t  cnt_no_response;
 
-uint32_t actual_frame_id;
+//uint32_t actual_frame_id;
 
 //WIoG - Wireless Internet of Garden
 #define WIOG_RX_QUEUE_SIZE 12
@@ -39,14 +39,15 @@ static xQueueHandle wiog_rx_queue;
 static xQueueHandle wiog_tx_queue;
 
 SemaphoreHandle_t return_timeout_Semaphore = NULL;
-
-dev_uid_t dev_uid = 0;
-
+dev_uid_t my_uid = 0;
 uint32_t ack_id = 0;		//Vergleich mit FrameID
 
 
-//Prototypen
-
+// Prototypen
+// ------------
+//Weiterleitung doppelte Frame-ID an RPi verhindern
+void set_dbls_fid(uint32_t fid);
+bool is_dbls_fid(uint32_t fid);
 
 
 //---------------------------------------------------------------------------------------------------------------
@@ -100,17 +101,44 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
 			tx_frame.wiog_hdr.vtype = ACK_FOR_CHANNEL;
 			tx_frame.wiog_hdr.frameid = 0;
+			tx_frame.tx_max_repeat = 0;
 			ack_id = 1;
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-					ESP_LOGW("Tx-Queue: ", "Channelscan fail");
+				ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 			}
 		} //scan_for_channel --------------------------------------------------------------
 		else
 
 		//Datenpaket von Device auswerten
 		if (pHdr->vtype == DATA_TO_GW) {
-			//Response vom Gatewa senden ?
-			uint16_t uid = pHdr->uid;
+			//Ack an Device senden
+			wiog_event_txdata_t tx_frame = {
+				.crypt_data = false,
+				.target_time = 0,
+				.data_len = 0,
+				.data = NULL,
+			};
+			//Header modifiziert als ACK zurücksenden
+			tx_frame.wiog_hdr = evt.wiog_hdr;
+			tx_frame.wiog_hdr.mac_from[5] = GATEWAY;
+			tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
+			tx_frame.wiog_hdr.vtype = ACK_FROM_GW;
+			tx_frame.tx_max_repeat = 0;
+tx_frame.wiog_hdr.interval_ms = 5000;	//interval ais DeviceInfo ermitteln
+//0 setzen wenn Sensor Standby
+			//ACK sofort an Device senden
+			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
+				ESP_LOGW("Tx-Queue: ", "Tx ACK fail");
+			}
+
+			//Daten via UART an RPi-GW senden	A-Frame
+			if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
+				set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
+				//kompletten Daten-Payload decrypted an RPi
+
+
+				send_uart_frame(evt.data, evt.data_len, 'A');
+			}
 
 
 		}
@@ -204,6 +232,7 @@ void wiog_tx_processing_task(void *pvParameter) {
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
 
+		//Datenpaket immer it aktuellem Wifi-Channel senden
 		wifi_second_chan_t ch2;
 		esp_wifi_get_channel(&evt.wiog_hdr.channel, &ch2);
 
@@ -252,7 +281,7 @@ void send_data_frame(uint8_t* buf, species_t species) {
 
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(species, GATEWAY);
-	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = GATEWAY;
 	tx_frame.wiog_hdr.vtype = DATA_TO_DEVICE;
 	tx_frame.wiog_hdr.frameid = esp_random();
@@ -274,7 +303,7 @@ void send_data_frame(uint8_t* buf, species_t species) {
 //Aufrufer aktualisiert später die Anzahl der Datensätze
 void set_management_data (management_t* pMan) {
 	pMan->sid = SYSTEM_ID;
-	pMan->uid = dev_uid;
+	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
@@ -297,7 +326,7 @@ void broadcast_nib() {
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(DUMMY, GATEWAY);
-	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = GATEWAY;
 	tx_frame.wiog_hdr.vtype = BC_NIB;
 	tx_frame.wiog_hdr.frameid = esp_random();
@@ -312,7 +341,7 @@ void broadcast_nib() {
 nib.ts = esp_timer_get_time();
 nib.dev_info[0].dev_uid=0x1234;
 nib.dev_info[0].node_uids[1]=0x5678;
-nib.slot_info[1] = dev_uid;
+nib.slot_info[1] = my_uid;
 	memcpy(&tx_frame.data[len_man], &nib, len_nib);
 	//Gesamt-Daten-Länge
 	tx_frame.data_len = len;
@@ -386,9 +415,10 @@ void app_main(void) {
 	esp_wifi_get_max_tx_power(&maxpwr);
 	printf("Set Tx-Power: %.2f dBm\n", maxpwr *0.25);
 
-	dev_uid = get_uid();	//Geräte-ID berechnen
+	my_uid = get_uid();	//Geräte-ID berechnen
+    logLV("Gateway booted - UID: ", my_uid);
 
-	while (true) {
+    while (true) {
 
 		payload_t pl;
 		bzero(&pl, sizeof(payload_t));
@@ -414,6 +444,34 @@ void app_main(void) {
 
 
 }
+
+// ---------------------------------------------------------------------------------
+
+//Liste der letzten empfangenen Frame-ID
+//doppelte Weiterleitung an RPi verhindern
+//Ringpuffer
+#define DBLS_FID_SIZE 16	// 2^n !!
+uint32_t dbls_fid[DBLS_FID_SIZE];
+uint8_t  ix_dbls_fid = 0;
+
+
+void set_dbls_fid(uint32_t fid){
+	dbls_fid[ix_dbls_fid] = fid;
+	ix_dbls_fid++;
+	ix_dbls_fid &= DBLS_FID_SIZE - 1;	//Ringpuffer
+}
+
+bool is_dbls_fid(uint32_t fid) {
+	bool res = false;
+	for (int i=0; i<DBLS_FID_SIZE; i++) {
+		if (dbls_fid[i] == fid) {
+			res = true;
+			break;
+		}
+	}
+	return res;
+}
+
 
 // *******************************************************************************************************
 //Obsolete Funktionen / Variablen /etc
