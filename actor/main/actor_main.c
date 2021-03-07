@@ -27,7 +27,7 @@
 
 payload_t tx_payload;
 payload_t rx_payload;
-int ixtxpl = 0;
+//int ixtxpl = 0;
 
 
 
@@ -178,11 +178,11 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			//SNR-Info an GW senden ---------------------------
 			//Info-Pakt im Repeater-Slot 50+n*50ms
-			//ACK erwartet
+			//kein ACK erwartet
 			wiog_event_txdata_t* ptx_frame2 = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
 			ptx_frame2->crypt_data = false;
 			ptx_frame2->target_time = 0,
-			ptx_frame2->tx_max_repeat = 5;
+			ptx_frame2->tx_max_repeat = 0;
 			ptx_frame2->data_len = 0;
 			ptx_frame2->data = NULL;
 			ptx_frame2->wiog_hdr = evt.wiog_hdr;
@@ -252,6 +252,7 @@ hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 				ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
 				ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
 			}
+printf("SNR-Buf: %d\n", ix_snr_buf);
 		}
 
 		else
@@ -259,6 +260,7 @@ hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 		//Frame an eigene UID adressiert
 		if (pHdr->uid == my_uid ) {
 
+			// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
 			if (pHdr->vtype == ACK_FROM_GW) {
 				ack_id = pHdr->frameid;	//Tx-Wiederholungen stoppen
 				//Interval-Info auf Plausibilität prüfen
@@ -433,8 +435,10 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
 
+		//Kanal und Tx-Power-Index im Header übertragen
 		wifi_second_chan_t ch2;
 		esp_wifi_get_channel(&evt.wiog_hdr.channel, &ch2);
+		esp_wifi_get_max_tx_power(&evt.wiog_hdr.txpwr);
 
 		//Header in Puffer kopieren
 		memcpy(buf, &evt.wiog_hdr, sizeof(wiog_header_t));
@@ -455,12 +459,6 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
-/*
-		//Sendug ggf verzögern
-		int64_t del_us = evt.target_time - esp_timer_get_time();
-		if (del_us > 0)	ets_delay_us((uint32_t) del_us);
-*/
-
 		evt.wiog_hdr.seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
@@ -480,9 +478,9 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 // Datenverarbeitung ----------------------------------------------------------------------------
 
 //Datenframe managed an Gateway senden
-void send_data_frame(uint8_t* buf, uint16_t len) {
+void send_data_frame(payload_t* buf, uint16_t len) {
 
-	uint8_t *data = &buf[0];	//Datenbereich
+	uint8_t *data = (uint8_t*)buf;	//Datenbereich
 
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
@@ -518,7 +516,7 @@ void set_management_data (management_t* pMan) {
 	int8_t pwr;
 	esp_wifi_get_max_tx_power(&pwr);
 	pMan->cnt_entries = 0;
-	ixtxpl = 0;
+//	ixtxpl = 0;
 }
 
 //aktuellen NodeInfoBlock an andere Nodes im Netz verteilen, kein ACK erwartet
@@ -566,28 +564,42 @@ IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 //Node sendet 1x je min Status-Frame mit Rx-Quality der empfangenen Devices
 IRAM_ATTR void wiog_snr_info_task(void *pvParameter) {
 	uint8_t loop = 0;
-	payload_t pl;
-uint8_t test = 0;
+
+
+//	ix_snr_buf = 0;
+//	ov_snr_buf = false;
+
+//	uint8_t test = 0;
+
 	while (true) {
 		vTaskDelay(1000*MS);	//!!!!! Test 1s -> 10s
 
-snr_buf[ix_snr_buf].dev_uid = (uint16_t)esp_random();
-snr_buf[ix_snr_buf].snr = test++;
-ix_snr_buf++;
+//snr_buf[ix_snr_buf].dev_uid = (uint16_t)esp_random();
+//snr_buf[ix_snr_buf].snr = test++;
+//ix_snr_buf++;
 
 		//SNR-Info senden - zyklisch oder kurz vor Overflow oder Overflow bereits erfolgt
 		if ((loop == 6) || (ix_snr_buf > MAX_SNR_BUF_ENTRIES - 3) || ov_snr_buf) {
 			//falls Overflow registriert wurde -> gesamten Puffer verwenden
 			if (ov_snr_buf) ix_snr_buf = MAX_SNR_BUF_ENTRIES -1;
 			//Datensätze als Payload
+			payload_t pl;
+			set_management_data(&pl.man);
+			pl.ix = 0;		//playload immer erst initialisieren
+			//SNR-Info als I32-Data je Eintrag
 			for (int i = 0; i < ix_snr_buf; i++)
-				add_entry_snr(&pl, snr_buf[ix_snr_buf].dev_uid, snr_buf[ix_snr_buf].snr);
+				add_entry_I32(&pl, dt_snr_info, 0, snr_buf[i].snr, snr_buf[i].dev_uid);
+
 			//Data to GW
-			send_data_frame((uint8_t*)&pl, ix_snr_buf * sizeof(struct snr_buf_entry));
+			send_data_frame(&pl, pl.ix + sizeof(pl.man));
 			//Buffer reset
 			ix_snr_buf = 0;
 			ov_snr_buf = false;
+			loop = 0;
+
+hexdump((uint8_t*)&pl, pl.ix + sizeof(pl.man) );
 		}
+		loop++;
 	}
 }
 // ---------------------------------------------------------------------------------
@@ -715,7 +727,7 @@ void app_main(void) {
 		uint8_t data[sz+1];				//Byte 0 => Längenbyte
 		memcpy(&data[1], txt, sz);		//Byte 1 => Datenbereich
 		data[0] = sz;
-printf("Send Dummy-Data\n");
+//printf("Send Dummy-Data\n");
 //		send_data_frame(data);
 
 		vTaskDelay(interval_ms / portTICK_PERIOD_MS);

@@ -11,6 +11,10 @@
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
 
+#define VERSION  3
+#define REVISION 0
+
+
 #define SENSOR_MIN_SLEEP_TIME_MS  10*SEK
 #define SENSOR_DEF_SLEEP_TIME_MS  10*MIN
 #define SENSOR_MAX_SLEEP_TIME_MS  24*STD
@@ -31,9 +35,10 @@ RTC_DATA_ATTR static uint32_t rtc_cycles;
 RTC_DATA_ATTR static uint32_t rtc_interval_ms;
 RTC_DATA_ATTR static int8_t   rtc_tx_pwr;		//Steuerung Sendeleistung
 RTC_DATA_ATTR static uint32_t rtc_cnt_no_scan;  //Fehlversuche Channelscan
+RTC_DATA_ATTR static uint32_t rtc_cnt_no_response;  //Fehlversuche Übertragung ??
 
 // --------------------------------------------------------------------------------
-uint16_t dev_uid; //Geräte-IS wird aus efuse_MAC berechnet
+uint16_t my_uid; //Geräte-IS wird aus efuse_MAC berechnet
 uint32_t actual_frame_id; //ID (Random) des Tx-Paketes -> f. warten auf Antwort-Frame
 uint32_t acked_frame_id;
 
@@ -41,7 +46,7 @@ species_t species = SENSOR;
 bool waked_up;
 
 SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
-
+uint32_t ack_id = 0;		//Vergleich mit FrameID
 
 int64_t timer;	//TEST !!!!!!!
 
@@ -56,7 +61,7 @@ static xQueueHandle wiog_rx_queue;
 #define WIOG_TX_QUEUE_SIZE 6
 static xQueueHandle wiog_tx_queue;
 
-SemaphoreHandle_t return_timeout_Semaphore = NULL;
+SemaphoreHandle_t ack_timeout_Semaphore = NULL;
 
 //---------------------------------------------------------------------------------------------------------------
 
@@ -71,7 +76,7 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(pHdr->mac_net, &mac_net, sizeof(mac_addr_t)) !=0)) return;
 
 	//nur per UID adressierte Pakete akzeptieren
-	if (pHdr->uid != dev_uid) return;
+	if (pHdr->uid != my_uid) return;
 	if (pHdr->vtype == DATA_TO_GW) return; //keine Paket-Wiederholungen auswerten
 
 	wiog_event_rxdata_t frame;
@@ -100,12 +105,23 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 int tix = (esp_timer_get_time() - timer) / 1000;
 printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
-	pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
+pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
 
 		// Antwort auf Channel-Scan ------------------------------------------
 		if ((rtc_wifi_channel == 0) && (pHdr->vtype == ACK_FOR_CHANNEL))
 		{
 			rtc_wifi_channel = pHdr->channel;	//Arbeitskanal wird in jedem WIOG-Header geliefert
+		}
+
+		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
+		if (pHdr->vtype == ACK_FROM_GW) {
+			ack_id = pHdr->frameid;	//Tx-Wiederholungen stoppen
+			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
+			rtc_interval_ms = pHdr->interval_ms;
+			//bei Kanal-Abweichung Channel-Scan veranlassen
+			if (rtc_wifi_channel != pHdr->channel) rtc_wifi_channel = 0;
+			xSemaphoreGive(ack_timeout_Semaphore);
+
 		}
 
 		//Daten vom Gateway entschlüsseln und verarbeiten -------------------
@@ -129,10 +145,9 @@ printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
 				uint8_t payload[blocksz];
 				cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key));
 
-				management_t* mgn = (management_t*)payload;
-				uint32_t ivl = mgn->interval;
-				if ((ivl>=SENSOR_MIN_SLEEP_TIME_MS) && (ivl <= SENSOR_MAX_SLEEP_TIME_MS))
-					rtc_interval_ms = ivl;
+//				management_t* mgn = (management_t*)payload;
+
+				rtc_interval_ms = pHdr->interval_ms;
 
 				//Verarbeitung der Daten
 
@@ -142,7 +157,7 @@ printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
 				if (rtc_tx_pwr < MIN_TX_POWER) rtc_tx_pwr = MIN_TX_POWER;
 
 				//Tx- Wiederholung abbrechen
-				xSemaphoreGive(return_timeout_Semaphore);
+//				xSemaphoreGive(return_timeout_Semaphore);
 			}
 
 			free(evt.data);
@@ -187,16 +202,19 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
-		esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+		evt.wiog_hdr.seq_ctrl = 0;
+		//max Wiederholungen bis ACK von GW oder Node
+		for (int i = 0; i <= evt.tx_max_repeat; i++) {
+			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
+			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
+			//Frame senden
+			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+			evt.wiog_hdr.seq_ctrl++;
+			//min. Ruhezeit zw. zwei Sendungen
+			vTaskDelay(50*MS);
+		}
 
-#ifdef DEBUG_Xx
-		printf("Tx: 0x%08x | %d Bytes | Typ: %02d | %04d =>\n",
-				evt.wiog_hdr.frameid, tx_len, evt.wiog_hdr.vtype, evt.wiog_hdr.seq_ctrl);
-
-		int8_t maxpwr;
-		esp_wifi_get_max_tx_power(&maxpwr);
-		printf("Set Tx-Power: %.2f dBm, %d %d\n", maxpwr *0.25, rtc_tx_pwr, maxpwr);
-#endif
+		free(evt.data);
 
 	}
 }
@@ -207,6 +225,31 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 // Öffentliche Funktionen ================================================================================
 
 //Datenframe managed an Gateway senden
+void send_data_frame(payload_t* buf, uint16_t len) {
+
+	uint8_t *data = (uint8_t*)buf;	//Datenbereich
+
+	wiog_event_txdata_t tx_frame;
+	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
+	tx_frame.wiog_hdr.uid = my_uid;
+	tx_frame.wiog_hdr.species = species;
+	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
+	tx_frame.wiog_hdr.frameid = esp_random();
+	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
+
+	tx_frame.data = malloc(len);
+	memcpy(tx_frame.data, data, len);
+	tx_frame.data_len = len;
+	tx_frame.crypt_data = true;
+	tx_frame.target_time = 0;
+
+	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
+		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
+
+//	free(tx_frame.data);	//Feigabe hier korrekt ?
+}
+
+/*
 int send_data_frame(uint8_t* buf) {
 
 	uint8_t len = buf[0];		//Längenbyte
@@ -214,7 +257,7 @@ int send_data_frame(uint8_t* buf) {
 
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
-	tx_frame.wiog_hdr.uid = dev_uid;
+	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = species;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 
@@ -243,6 +286,24 @@ int send_data_frame(uint8_t* buf) {
 
 	return i;
 }
+*/
+
+//Eintragen der Management-Daten in den Payload
+//Aufrufer aktualisiert später die Anzahl der Datensätze
+//Prefix des verschlüsselten Datenblocks an RPi
+void set_management_data (management_t* pMan) {
+	pMan->sid = SYSTEM_ID;
+	pMan->uid = my_uid;
+	pMan->wifi_channel = rtc_wifi_channel;
+	pMan->version = VERSION;
+	pMan->revision = REVISION;
+	pMan->cycle = rtc_cycles;
+	pMan->cnt_no_response = rtc_cnt_no_response;
+	int8_t pwr;
+	esp_wifi_get_max_tx_power(&pwr);
+	pMan->cnt_entries = 0;
+//	ixtxpl = 0;
+}
 
 // ---------------------------------------------------------------------------------
 
@@ -263,7 +324,7 @@ void wiog_set_channel(uint8_t ch) {
 		};
 		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
 		tx_frame.wiog_hdr.vtype = SCAN_FOR_CHANNEL;
-		tx_frame.wiog_hdr.uid = dev_uid;
+		tx_frame.wiog_hdr.uid = my_uid;
 		tx_frame.wiog_hdr.species = species;
 
 		rtc_tx_pwr = MAX_TX_POWER;
@@ -292,7 +353,7 @@ printf("Scan Channel: %d\n", ch);
 		} else {
 			ESP_ERROR_CHECK( esp_wifi_set_channel(rtc_wifi_channel, WIFI_SECOND_CHAN_NONE));
 printf("Set Channel: %d\n", rtc_wifi_channel);
-			sleeptime_ms = 50*1000;	//1. Ruhezeit	!!!!!!!!!!!!! 5
+			sleeptime_ms = 5*1000;	//1. Ruhezeit
 		}
 
 		esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
@@ -353,7 +414,8 @@ bool wiog_sensor_init() {
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
 	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 2048, NULL, 5, NULL);
 
-	return_timeout_Semaphore = xSemaphoreCreateBinary();
+	//f. warten auf ACK vor DeepSleep
+	ack_timeout_Semaphore = xSemaphoreCreateBinary();
 
 	esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -371,7 +433,7 @@ bool wiog_sensor_init() {
 	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
 	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
 
-	dev_uid = get_uid();	//Geräte-ID berechnen
+	my_uid = get_uid();	//Geräte-ID berechnen
 
 	//Kanal setzen oder Channel-Scan
 	wiog_set_channel(rtc_wifi_channel);
@@ -385,7 +447,7 @@ bool wiog_sensor_init() {
 void app_main(void) {
 
 	wiog_sensor_init();
-vTaskDelay (1000*MS);
+vTaskDelay (300*MS);
 
 	//Test-Frame senden ---------------------------------------------
 	char txt[] = {"Hello World - How are you ? Dast ist ein Test"};
@@ -395,10 +457,19 @@ vTaskDelay (1000*MS);
 	memcpy(&data[1], txt, sz);		//Byte 1 => Datenbereich
 	data[0] = sz;
 
-	/*bool b = */
-	send_data_frame(data);
+	payload_t pl;
+	pl.ix = 0;
+	set_management_data(&pl.man);
+	add_entry_str (&pl, dt_txt_info, 0x55, txt);
+
+	//Data to GW
+	send_data_frame(&pl, pl.ix + sizeof(pl.man));
 
 	//----------------------------------------------------------------
+
+	//Antwort des Gateway/Nose abwarten
+	if (xSemaphoreTake(ack_timeout_Semaphore, 250*MS) != pdTRUE)
+		rtc_cnt_no_response++;
 
 
 	rtc_onTime += esp_timer_get_time() / 1000;

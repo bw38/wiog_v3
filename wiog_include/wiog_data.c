@@ -5,13 +5,13 @@
 
 #include "wiog_data.h"
 
-
+/* Standard-Frame-Typ ???
 void add_entry(payload_t* ppl, data_entry_t* pdent ){
 	memcpy(&ppl->data[ppl->ix], pdent, sizeof(data_entry_t));
 	ppl->ix += sizeof(data_entry_t);
 	ppl->man.cnt_entries++;
 }
-
+*/
 
 void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_t val) {
 	df_i32_t e32 = {
@@ -73,18 +73,6 @@ void add_entry_str (payload_t* pl, uint8_t type, uint8_t ix, char* str) {
 	pl->man.cnt_entries++;
 }
 
-//Geräte-SNR-Info
-extern void add_entry_snr (payload_t* pl, dev_uid_t uid, uint8_t snr) {
-	df_snr_t ent = {
-		.frametype = DF_SNR,
-		.dev_uid = uid,
-		.snr = snr
-	};
-	memcpy(&pl->data[pl->ix], &ent, sizeof(df_snr_t));
-	pl->ix += sizeof(df_snr_t);
-	pl->man.cnt_entries++;
-}
-
 
 
 // -------------------------------------------------------------------------------
@@ -102,7 +90,6 @@ void* get_next_entry (payload_t* pl, data_frame_t* dft) {
 			pl->ix += sizeof(df_str_t) /*- sizeof(ent->txt) */+ ent->length;
 			break;
 		}
-
 		default: entry = NULL;
 	}
 

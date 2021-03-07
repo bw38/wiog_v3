@@ -112,6 +112,24 @@ int cbc_decrypt(uint8_t *crypted, uint8_t *data, int crypt_len, uint8_t *key, in
 	return res;
 }
 
+// ----------------------------
+// Entschlüsseln eines Datenblockes encryptes
+// Daten danach in data, Puffer stellt Aufrufer zur Verfügung
+// len Länge des encrypted Block
+// Frame-ID wird im System zum salze des Key genutzt
+// Result = 0 bei Erfolg
+int wiog_decrypt_data(uint8_t* encrypted, uint8_t* data, uint16_t len, uint32_t fid) {
+	uint8_t key[] = {AES_KEY};	//CBC-AES-Key
+	// Frame-ID => 4 letzten Bytes im Key - salted key
+	key[28] = (uint8_t)fid;
+	key[29] = (uint8_t)(fid>>=8);
+	key[30] = (uint8_t)(fid>>=8);
+	key[31] = (uint8_t)(fid>>=8);
+	return cbc_decrypt(encrypted, data, len, key, sizeof(key));
+}
+
+// -------------------------------------------------------------------------------------------------------
+
 //uid aus Wifi-efuse-MAC berechnen Wifi-Interface initialisiert
 uint16_t get_uid() {
     uint8_t umac[6];

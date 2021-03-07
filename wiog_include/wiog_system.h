@@ -105,7 +105,7 @@ typedef enum {
     RETURN_FROM_GW,
 	DATA_TO_DEVICE,
 	RETURN_FROM_ACTOR,
-	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway
+	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
 	BC_NIB				//Boradcast Node Info Block
 } vtype_t;
 
@@ -201,6 +201,7 @@ void hexdumpex(uint8_t *data, int len);
 int get_blocksize(int data_len, int key_len);
 int cbc_encrypt(uint8_t *data, uint8_t *crypted, int data_len, uint8_t *key, int key_len);
 int cbc_decrypt(uint8_t *crypted, uint8_t *data, int len, uint8_t *key, int key_len);
+int wiog_decrypt_data(uint8_t* encrypted, uint8_t*data, uint16_t len, uint32_t fid);
 
 void wiog_set_channel(uint8_t ch);
 

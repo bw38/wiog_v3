@@ -12,7 +12,7 @@
 #define __WIOG_DATA_H__
 
 #include "wiog_system.h"
-
+/*
 //Standard-Frame-Typ
 typedef struct __attribute__((packed)) {
 	uint8_t  datatype;
@@ -23,15 +23,26 @@ typedef struct __attribute__((packed)) {
 	int32_t val_I32B;
 	int32_t val_I32C;
 } data_entry_t;
-
+*/
 // --------------------------------------------------
 
 typedef enum {
-	DF_I32 = 0,
-	DF_I64 = 1,
-	DF_STR = 2,
-	DF_SNR = 3,
-}data_frame_t;
+	dt_snr_info = 0,
+	dt_bme280   = 1,
+	dt_bme680   = 2,
+	dt_level    = 3,
+	dt_db18b20  = 4,
+	dt_heatctrl = 5,
+	dt_txt_info = 6,
+} datatype_t;
+
+
+typedef enum {
+	DF_NULL= 0,
+	DF_I32 = 1,
+	DF_I64 = 2,
+	DF_STR = 3
+} data_frame_t;
 
 typedef struct __attribute__((packed)) {
 	uint8_t  frametype;	//const I32
@@ -57,12 +68,6 @@ typedef struct __attribute__((packed)) {
 	uint8_t txt[];
 } df_str_t;
 
-// Node -> GW
-typedef struct __attribute__((packed)) {
-	uint8_t   frametype;	//const DEV_SNR
-	dev_uid_t dev_uid;
-	uint8_t   snr;
-} df_snr_t;
 
 
 

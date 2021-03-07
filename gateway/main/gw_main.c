@@ -49,6 +49,9 @@ uint32_t ack_id = 0;		//Vergleich mit FrameID
 void set_dbls_fid(uint32_t fid);
 bool is_dbls_fid(uint32_t fid);
 
+//Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
+void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
+
 
 //---------------------------------------------------------------------------------------------------------------
 
@@ -106,6 +109,9 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
 				ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 			}
+			//GW_UID, Dev_UID, SNR
+			snr_info_to_uart(my_uid, evt.wiog_hdr.uid, evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor);
+
 		} //scan_for_channel --------------------------------------------------------------
 		else
 
@@ -124,7 +130,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
 			tx_frame.wiog_hdr.vtype = ACK_FROM_GW;
 			tx_frame.tx_max_repeat = 0;
-tx_frame.wiog_hdr.interval_ms = 5000;	//interval ais DeviceInfo ermitteln
+tx_frame.wiog_hdr.interval_ms = 15000;	//interval ais DeviceInfo ermitteln
 //0 setzen wenn Sensor Standby
 			//ACK sofort an Device senden
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
@@ -134,15 +140,25 @@ tx_frame.wiog_hdr.interval_ms = 5000;	//interval ais DeviceInfo ermitteln
 			//Daten via UART an RPi-GW senden	A-Frame
 			if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
 				set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
-				//kompletten Daten-Payload decrypted an RPi
 
-
-				send_uart_frame(evt.data, evt.data_len, 'A');
+				//Datenblock entschlüsseln
+				uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
+				bzero(buf, evt.data_len);
+				if (wiog_decrypt_data(evt.data, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
+					//kompletten Daten-Payload decrypted an RPi
+					send_uart_frame(buf, evt.data_len, 'A');
+				else logE("Dercrpt Error");
 			}
 
 
 		}
 
+		//Sofortmeldung eines Node - SNR nach Channelscan
+		//Q-Frame an RPi
+		if (pHdr->vtype == SNR_INFO_TO_GW) {
+			//node_UID, Dev_UID, SNR
+			snr_info_to_uart(evt.wiog_hdr.uid, evt.wiog_hdr.tagC, evt.wiog_hdr.tagA);
+		}
 
 /*
 		//Empfang eines Datenpaketes von Sensor/Actor
@@ -472,7 +488,20 @@ bool is_dbls_fid(uint32_t fid) {
 	return res;
 }
 
+// -------------------------------------------------------------------------------------------
+//Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
+void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr) {
+	struct  {
+		dev_uid_t node_uid;	//meldender Node / GW
+		dev_uid_t dev_uid;	//uid des anfragenden Gerätes
+		uint8_t snr;		//SNR des Device am Node
+	}snr_info;
 
+	snr_info.node_uid = nuid;
+	snr_info.dev_uid = duid;
+	snr_info.snr = snr;
+	send_uart_frame(&snr_info, sizeof(snr_info), 'Q');
+}
 // *******************************************************************************************************
 //Obsolete Funktionen / Variablen /etc
 
