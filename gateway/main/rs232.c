@@ -173,18 +173,15 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         					if ((rx_char == '\n') && (crc.i16 == crc16(line, ixLine-3)))
         					{
         						if (cFTyp == 'n') { 	// Node-Info-Block
-        							if (pl.data_len == sizeof(node_info_block_t)) {
-        								memcpy(&nib , pl.data, pl.data_len);
-        								broadcast_nib();
-        							} else {
-        								logE("Error : Length NIB");
-        							}
+        							memcpy(&nib , pl.data, pl.data_len);
+        							broadcast_nib(&nib);
+LED_BL_TOGGLE;
         						} //NIB
         						else if (cFTyp == 'y') {	//Test Loop
 
         							logLV("Empfangen: ", pl.data_len);
         							send_uart_frame(pl.data, pl.data_len, 'Y');
-LED_BL_TOGGLE;
+
         						}
 
 

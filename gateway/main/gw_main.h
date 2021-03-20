@@ -35,6 +35,6 @@
 //Prioritäten und Slots (synchron in allen Nodes (incl gw))
 node_info_block_t nib;
 
-void broadcast_nib();
+void broadcast_nib(node_info_block_t* pnib);
 
 #endif /* MAIN_GW_MAIN_H_ */

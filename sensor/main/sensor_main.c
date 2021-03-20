@@ -202,16 +202,16 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
-		evt.wiog_hdr.seq_ctrl = 0;
+		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
 			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
-			evt.wiog_hdr.seq_ctrl++;
+			((wiog_header_t*) buf)->seq_ctrl++ ;
 			//min. Ruhezeit zw. zwei Sendungen
-			vTaskDelay(50*MS);
+			vTaskDelay(75*MS);
 		}
 
 		free(evt.data);
@@ -328,7 +328,8 @@ void wiog_set_channel(uint8_t ch) {
 		tx_frame.wiog_hdr.species = species;
 
 		rtc_tx_pwr = MAX_TX_POWER;
-		esp_wifi_set_max_tx_power(rtc_tx_pwr);
+		ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(rtc_tx_pwr));
+
 //ch=1 !!!!!
 		for (ch = 3; ch <= wifi_country_de.nchan; ch++) {
 			ESP_ERROR_CHECK( esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE));
@@ -437,7 +438,7 @@ bool wiog_sensor_init() {
 
 	//Kanal setzen oder Channel-Scan
 	wiog_set_channel(rtc_wifi_channel);
-	esp_wifi_set_max_tx_power(rtc_tx_pwr);
+	ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(rtc_tx_pwr));
 
 	return waked_up;
 }
@@ -450,7 +451,7 @@ void app_main(void) {
 vTaskDelay (300*MS);
 
 	//Test-Frame senden ---------------------------------------------
-	char txt[] = {"Hello World - How are you ? Dast ist ein Test"};
+	char txt[] = {"Hello World - How are you ? Das ist ein Test"};
 
 	uint8_t sz = strlen(txt) & 0xFF;
 	uint8_t data[sz+1];				//Byte 0 => Längenbyte
@@ -467,7 +468,7 @@ vTaskDelay (300*MS);
 
 	//----------------------------------------------------------------
 
-	//Antwort des Gateway/Nose abwarten
+	//Antwort des Gateway/Node abwarten
 	if (xSemaphoreTake(ack_timeout_Semaphore, 250*MS) != pdTRUE)
 		rtc_cnt_no_response++;
 

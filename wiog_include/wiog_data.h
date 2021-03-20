@@ -120,20 +120,29 @@ extern void* get_next_entry (payload_t* pl, data_frame_t* dft);
 // Die Nodes empfangen den NIB und aktualisieren ggf den lokalen NIB im DRAM
 // Nodes senden ihren eigenen NIB zur Synchronisation anderer Nodes
 
+
+typedef struct __attribute__((packed)) {
+	dev_uid_t node_uid;
+	uint8_t snr;
+} node_info_t;
+
+
 typedef struct __attribute__((packed)) {
 	dev_uid_t dev_uid;					//0 -> ungültig / uint16_t -> gültig
-	dev_uid_t node_uids[MAX_NODES]; 	//Node-Priorität
+	node_info_t node_infos[MAX_NODES]; 	//Node-Priorität	UID/SNR
 } dev_info_t;
 
-// Node-Info-Block NIB	(888 Bytes)
+// Node-Info-Block NIB - wird in Raspi-GW erstellt und per Broacast an Nodes verteilt
 typedef struct __attribute__((packed)) {
 	int64_t ts;							//Timestamp zur Aktualitätsprüfung
-	dev_uid_t slot_info[MAX_SLOTS];
-	dev_info_t dev_info[MAX_DEVICES]; 	//Position im Array entspricht Routing-Prio
+	uint16_t dev_cnt;					//Anzahl der Einträge in dev_info[]
+	dev_uid_t slot_info[MAX_SLOTS];		//Timeslots der Nodes (UID)
+	dev_info_t dev_info[MAX_DEVICES]; 	//Eintrag je Device, DevUID: NodeUID/SNR -> (sortiert nach snr am Node)
 } node_info_block_t;
 
 int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid);
 int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid);
+int get_node_slot(node_info_block_t *pnib, dev_uid_t uid);
 void nib_clear_all(node_info_block_t *pnib);
 
 

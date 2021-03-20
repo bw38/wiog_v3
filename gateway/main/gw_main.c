@@ -51,7 +51,7 @@ bool is_dbls_fid(uint32_t fid);
 
 //Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
 void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
-
+void bc_nib_immediately();
 
 //---------------------------------------------------------------------------------------------------------------
 
@@ -90,6 +90,9 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 //		uint8_t data_len = pRx_ctrl->sig_len - sizeof(wiog_header_t) - 4;
 
+		//GW_UID, Dev_UID, SNR
+		snr_info_to_uart(my_uid, evt.wiog_hdr.uid, evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor);
+
 		//Antwort auf ChannelScan eines Devices -------------------------------------------
 		//Arbeitskanal wird in tx-processing in Header eingefügt
 		if (pHdr->vtype == SCAN_FOR_CHANNEL) {
@@ -109,32 +112,34 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
 				ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 			}
-			//GW_UID, Dev_UID, SNR
-			snr_info_to_uart(my_uid, evt.wiog_hdr.uid, evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor);
-
+			bc_nib_immediately();
 		} //scan_for_channel --------------------------------------------------------------
 		else
 
 		//Datenpaket von Device auswerten
 		if (pHdr->vtype == DATA_TO_GW) {
-			//Ack an Device senden
-			wiog_event_txdata_t tx_frame = {
-				.crypt_data = false,
-				.target_time = 0,
-				.data_len = 0,
-				.data = NULL,
-			};
-			//Header modifiziert als ACK zurücksenden
-			tx_frame.wiog_hdr = evt.wiog_hdr;
-			tx_frame.wiog_hdr.mac_from[5] = GATEWAY;
-			tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.mac_from[5];
-			tx_frame.wiog_hdr.vtype = ACK_FROM_GW;
-			tx_frame.tx_max_repeat = 0;
+			int ix = nib_get_priority(&nib, pHdr->uid, my_uid);
+			//ACK senden Seq_ctrl = Prio oder über Node
+			if ((pHdr->seq_ctrl == ix) || pHdr->mac_from[5] == REPEATER) {
+				//Ack an Device senden
+				wiog_event_txdata_t tx_frame = {
+					.crypt_data = false,
+					.target_time = 0,
+					.data_len = 0,
+					.data = NULL,
+				};
+				//Header modifiziert als ACK zurücksenden
+				tx_frame.wiog_hdr = evt.wiog_hdr;
+				tx_frame.wiog_hdr.mac_from[5] = GATEWAY;
+				tx_frame.wiog_hdr.mac_to[5] = evt.wiog_hdr.species;
+				tx_frame.wiog_hdr.vtype = ACK_FROM_GW;
+				tx_frame.tx_max_repeat = 0;
 tx_frame.wiog_hdr.interval_ms = 15000;	//interval ais DeviceInfo ermitteln
 //0 setzen wenn Sensor Standby
 			//ACK sofort an Device senden
-			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-				ESP_LOGW("Tx-Queue: ", "Tx ACK fail");
+				if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
+					ESP_LOGW("Tx-Queue: ", "Tx ACK fail");
+				}
 			}
 
 			//Daten via UART an RPi-GW senden	A-Frame
@@ -151,14 +156,14 @@ tx_frame.wiog_hdr.interval_ms = 15000;	//interval ais DeviceInfo ermitteln
 			}
 
 
-		}
+		}	//Data To GW ------------------------------------------
 
-		//Sofortmeldung eines Node - SNR nach Channelscan
-		//Q-Frame an RPi
+		//Sofortmeldung eines Node - SNR nach Channelscan	-> Q-Frame an RPi
 		if (pHdr->vtype == SNR_INFO_TO_GW) {
 			//node_UID, Dev_UID, SNR
 			snr_info_to_uart(evt.wiog_hdr.uid, evt.wiog_hdr.tagC, evt.wiog_hdr.tagA);
-		}
+			bc_nib_immediately();
+		}// SNR Info To GW
 
 /*
 		//Empfang eines Datenpaketes von Sensor/Actor
@@ -333,11 +338,15 @@ void set_management_data (management_t* pMan) {
 
 
 //aktuellen NodeInfoBlock im Netz verteilen, kein ACK erwartet
+//len_nib in Bytes - abhängig vob der Anzahl der registrierten Devices
 //incl. Managementdaten
-void broadcast_nib() {
+void broadcast_nib(node_info_block_t* pnib) {
 	//Länge der Nutzdatenblöcke
 	int len_man = sizeof(management_t);
-	int len_nib = sizeof(node_info_block_t);
+	int len_nib = 	sizeof(int64_t) + 	//ts
+					sizeof(uint16_t) +	//dev_cnt
+					sizeof(dev_uid_t) * MAX_SLOTS +
+					sizeof(dev_info_t) * pnib->dev_cnt;
 
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
@@ -354,11 +363,8 @@ void broadcast_nib() {
 	management_t man;
 	set_management_data(&man);
 	memcpy(&tx_frame.data[0], &man, sizeof(management_t));
-nib.ts = esp_timer_get_time();
-nib.dev_info[0].dev_uid=0x1234;
-nib.dev_info[0].node_uids[1]=0x5678;
-nib.slot_info[1] = my_uid;
-	memcpy(&tx_frame.data[len_man], &nib, len_nib);
+
+	memcpy(&tx_frame.data[len_man], pnib, len_nib);
 	//Gesamt-Daten-Länge
 	tx_frame.data_len = len;
 	tx_frame.target_time = 0;
@@ -427,11 +433,15 @@ void app_main(void) {
 
 	//Gateway mit max tx power
 	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
+#ifdef DEBUG_X
+	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MIN_TX_POWER));
+#endif
+
 	int8_t maxpwr;
 	esp_wifi_get_max_tx_power(&maxpwr);
 	printf("Set Tx-Power: %.2f dBm\n", maxpwr *0.25);
 
-	my_uid = get_uid();	//Geräte-ID berechnen
+	my_uid = 0xFFFF; 	//get_uid();	//Geräte-ID berechnen
     logLV("Gateway booted - UID: ", my_uid);
 
     while (true) {
@@ -452,8 +462,6 @@ void app_main(void) {
 		add_entry_I32(&pl, 111, 222, 255, 888888 );
 
 //		send_data_frame((uint8_t*) &pl, ACTOR);
-
-		broadcast_nib();
 
 		vTaskDelay(15000*MS);
 	}
@@ -501,6 +509,10 @@ void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr) {
 	snr_info.dev_uid = duid;
 	snr_info.snr = snr;
 	send_uart_frame(&snr_info, sizeof(snr_info), 'Q');
+}
+
+void bc_nib_immediately() {
+	send_uart_frame(NULL, 0, 'I');
 }
 // *******************************************************************************************************
 //Obsolete Funktionen / Variablen /etc

@@ -29,6 +29,7 @@ static int64_t ts_pkts_start = 0;
 #define WIOG_SNIFFER_QUEUE_SIZE 6
 static xQueueHandle wiog_sniffer_queue;
 
+uint32_t last_frame_id;
 
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
@@ -61,11 +62,18 @@ IRAM_ATTR  void wifi_sniffer_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 static void wiog_sniffer_task(void *pvParameter) {
 
 	wiog_event_rxdata_t evt;
+	bool bcr;
 
 	while ((xQueueReceive(wiog_sniffer_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
 		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
 		wiog_header_t *pHdr = &evt.wiog_hdr;
+
+		bcr = (pHdr->frameid != last_frame_id);
+		if (bcr) {
+			printf("===> %.0fms\n", (evt.timestamp-ts_pkts_start) / 1000.0);
+			ts_pkts_start = evt.timestamp;
+		}
 
 		printf("%02x => %02x | ", pHdr->mac_from[5], pHdr->mac_to[5]);
 
@@ -84,11 +92,17 @@ static void wiog_sniffer_task(void *pvParameter) {
 			pHdr->frameid,
 			pHdr->seq_ctrl);
 
+
+		last_frame_id = pHdr->frameid;
+
 		free(evt.data);
 
-		if (loop_cnt >= 5) ts_pkts_start = evt.timestamp;
-		printf("| %.3fms\n", (evt.timestamp-ts_pkts_start) / 1000.0);
+		printf("| %.0fms\n", (evt.timestamp-ts_pkts_start) / 1000.0);
+
+
+
 		loop_cnt = 0;
+
 	}
 }
 
@@ -119,7 +133,7 @@ void app_main(void) {
 	while (true) {
 		vTaskDelay(100*MS);
 		if (loop_cnt++ == 5) {
-			printf("\n");
+//			printf("\n");
 		}
 	}
 }

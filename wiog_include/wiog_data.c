@@ -118,8 +118,22 @@ int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid){
 int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid ) {
 	int res = -1;
 	int ix = nib_get_uid_ix(pnib, dev_uid);
-	for (int i = 0; i < MAX_NODES; i++) {
-		if (pnib->dev_info[ix].node_uids[i] == node_uid) {
+	if (ix >= 0) {
+		for (int i = 0; i < MAX_NODES; i++) {
+			if (pnib->dev_info[ix].node_infos[i].node_uid == node_uid) {
+				res = i;
+				break;
+			}
+		}
+	}
+	return res;
+}
+
+//Prio des Nodes aus NIB ermitteln
+int get_node_slot(node_info_block_t *pnib, dev_uid_t uid) {
+	int res = MAX_SLOTS;	//wenn nicht gefunden -> niedrige Prio
+	for (int i=0; i<MAX_SLOTS; i++) {
+		if (pnib->slot_info[i] == uid) {
 			res = i;
 			break;
 		}
@@ -129,11 +143,5 @@ int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_
 
 //NIB initialisieren
 void nib_clear_all(node_info_block_t *pnib) {
-	int i;
-	pnib->ts = 0;
-	for (i = 0; i < MAX_SLOTS; i++) pnib->slot_info[i] = 0;
-	for (i = 0; i < MAX_DEVICES; i++) {
-		pnib->dev_info[i].dev_uid = 0;
-		for (int j = 0; j < MAX_NODES; j++) pnib->dev_info[i].node_uids[j] = 0;
-	}
+	bzero(pnib, sizeof(node_info_t));
 }

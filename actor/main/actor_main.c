@@ -20,6 +20,14 @@
 #define REVISION 0
 
 
+#ifndef DEBUG_X
+#define NIB_BC_INTERVAL_MS	60000	//NIB 1x je Minute an andere Nodes weiterleiten
+#define SNR_INFO_INTERVAL_MS 5000
+#else
+#define	NIB_BC_INTERVAL_MS	10000
+#define SNR_INFO_INTERVAL_MS 5000
+#endif
+
 
 #define ACTOR_MIN_SLEEP_TIME_MS 5*1000		//min 5Sek
 #define ACTOR_MAX_SLEEP_TIME_MS 60*60*1000	//max 1h
@@ -41,7 +49,7 @@ uint32_t actual_frame_id; //ID (Random) des Tx-Paketes -> f. warten auf Antwort-
 uint32_t acked_frame_id;
 
 species_t species = ACTOR;
-uint8_t slot = 0;
+uint8_t slot = MAX_SLOTS;
 
 SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
 
@@ -85,6 +93,7 @@ uint32_t ack_id = 0;		//Vergleich mit FrameID
 //Prototypen
 //static void repeat_frame_to_gw_task (void *pvParameter);
 bool is_fid_handled(uint32_t fid);
+void print_nib();
 
 
 // ----------------------------------------------------------------------------------------------
@@ -174,7 +183,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			esp_timer_handle_t h_timer1;
 			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer1));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer1, slot * SLOT_TIME_US)); 	// Start the timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer1, (slot+1) * SLOT_TIME_US)); 	// Start the timer, in Slot(0) antwortet der GW
 
 			//SNR-Info an GW senden ---------------------------
 			//Info-Pakt im Repeater-Slot 50+n*50ms
@@ -203,7 +212,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			esp_timer_handle_t h_timer2;
 			ESP_ERROR_CHECK(esp_timer_create(&timer_args2, &h_timer2));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, 500000 + slot * 50000));  //n=1 => 100ms / n=2 => 150ms ...
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, 50000 + slot * 10000));  //slot(0) => 50ms / slot(1) => 60ms ...
 		}	// Ende Kanalanfrage ----------------------------------------------------------------
 
 		else
@@ -230,11 +239,13 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 						//Datenbereich im Anschluss an Management-Data
 						node_info_block_t *pnib = (node_info_block_t*) &payload[sizeof(management_t)];
 
-						if (pnib->ts > nib.ts) //Aktualitätsprüfung
-							memcpy(&nib, pnib, sizeof(node_info_block_t));
-printf("NIB TS: %lld %lld\n", nib.ts, pnib->ts);
-hexdump((uint8_t*) nib.dev_info, 64);
-hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
+						if (pnib->ts > nib.ts){ //Aktualitätsprüfung
+							bzero(&nib, sizeof(node_info_block_t));
+							memcpy(&nib, pnib, evt.data_len);
+							slot = get_node_slot(&nib, my_uid);
+printf("UID: %d >> Slot: %d\n", evt.wiog_hdr.uid, slot);
+print_nib();
+						}
 					}
 				}
 			}
@@ -252,11 +263,57 @@ hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 				ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
 				ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
 			}
-printf("SNR-Buf: %d\n", ix_snr_buf);
+			//Daten wieder in die Queue stellen
+			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
+			if ( ix == pHdr->seq_ctrl) {
+				wiog_event_txdata_t tx_frame;
+				uint8_t* data = malloc(evt.data_len);
+				memcpy(data, evt.data, evt.data_len);
+				tx_frame.wiog_hdr = evt.wiog_hdr;
+				tx_frame.crypt_data = false;	//Verschlüsselung nicht ändern
+				tx_frame.target_time = 0;		//obsolete
+				tx_frame.tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
+				tx_frame.wiog_hdr.tagC = my_uid;//zur freien Auswertung
+				tx_frame.data_len = evt.data_len;
+				tx_frame.data = data;
+				tx_frame.wiog_hdr.mac_from[5] = REPEATER;
+				if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
+					ESP_LOGW("Tx-Queue: ", "Tx Data fail");
+			}
+printf("Add SNR-Buf: %d - ix: %d\n", ix_snr_buf, ix);
+//
 		}
 
 		else
 
+		//ACK des GW durch Nodes mit Prio 0+1 broadcasten
+		if ((pHdr->vtype == ACK_FROM_GW) && (species == REPEATER) && (pHdr->uid != my_uid ) && (pHdr->mac_from[5] == GATEWAY)) {
+			//Daten wieder in die Queue stellen
+			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
+			if (( ix >= 0 ) && (ix < 2)) {
+				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
+				ptx_frame->wiog_hdr = evt.wiog_hdr;
+				ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
+				ptx_frame->target_time = 0;		//obsolete
+				ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
+				ptx_frame->wiog_hdr.tagC = my_uid;//zur freien Auswertun
+				ptx_frame->data_len = 0;			//Ack-Frame hat keine Daten
+				ptx_frame->data = NULL;
+				ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
+				//In Slot senden
+				const esp_timer_create_args_t timer_args = {
+	  	  			  .callback = &cb_tx_delay_slot,
+					  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+					  .name = "bc_act_from_gw"
+				};
+
+				esp_timer_handle_t h_timer3;
+				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer3));	//Create HiRes-Timer
+				ESP_ERROR_CHECK(esp_timer_start_once(h_timer3, (slot+1) * SLOT_TIME_US)); 	// Start the timer
+			}
+		}
+
+		else
 		//Frame an eigene UID adressiert
 		if (pHdr->uid == my_uid ) {
 
@@ -459,16 +516,16 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
-		evt.wiog_hdr.seq_ctrl = 0;
+		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
 			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
-			evt.wiog_hdr.seq_ctrl++;
+			((wiog_header_t*) buf)->seq_ctrl++ ;
 			//min. Ruhezeit zw. zwei Sendungen
-			vTaskDelay(50*MS);
+			vTaskDelay(75*MS);
 		}
 
 		free(evt.data);
@@ -478,14 +535,14 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 // Datenverarbeitung ----------------------------------------------------------------------------
 
 //Datenframe managed an Gateway senden
-void send_data_frame(payload_t* buf, uint16_t len) {
+void send_data_frame(payload_t* buf, uint16_t len, species_t spec) {
 
 	uint8_t *data = (uint8_t*)buf;	//Datenbereich
 
 	wiog_event_txdata_t tx_frame;
-	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
+	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, spec);
 	tx_frame.wiog_hdr.uid = my_uid;
-	tx_frame.wiog_hdr.species = species;
+	tx_frame.wiog_hdr.species = spec;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
@@ -524,7 +581,11 @@ void set_management_data (management_t* pMan) {
 void broadcast_nib() {
 	//Länge der Nutzdatenblöcke
 	int len_man = sizeof(management_t);
-	int len_nib = sizeof(node_info_block_t);
+	//NIB nur aktive Device-Einträge
+	int len_nib = 	sizeof(int64_t) + 					//ts
+					sizeof(uint16_t) +					//dev_cnt
+					sizeof(dev_uid_t) * MAX_SLOTS +		//Slot_Array
+					(sizeof(dev_uid_t) + sizeof(node_info_t) * MAX_NODES ) * nib.dev_cnt;	//aktive Device-Zeilen
 
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
@@ -556,7 +617,7 @@ void broadcast_nib() {
 //in Node-Betrieb Zeitgesteurt eigenen NIB anderen Nodes anbieten
 IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 	while (true) {
-		vTaskDelay(6000*MS);
+		vTaskDelay(NIB_BC_INTERVAL_MS * MS);
 		broadcast_nib();
 	}
 }
@@ -565,18 +626,8 @@ IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 IRAM_ATTR void wiog_snr_info_task(void *pvParameter) {
 	uint8_t loop = 0;
 
-
-//	ix_snr_buf = 0;
-//	ov_snr_buf = false;
-
-//	uint8_t test = 0;
-
 	while (true) {
-		vTaskDelay(1000*MS);	//!!!!! Test 1s -> 10s
-
-//snr_buf[ix_snr_buf].dev_uid = (uint16_t)esp_random();
-//snr_buf[ix_snr_buf].snr = test++;
-//ix_snr_buf++;
+		vTaskDelay(SNR_INFO_INTERVAL_MS * MS);
 
 		//SNR-Info senden - zyklisch oder kurz vor Overflow oder Overflow bereits erfolgt
 		if ((loop == 6) || (ix_snr_buf > MAX_SNR_BUF_ENTRIES - 3) || ov_snr_buf) {
@@ -591,13 +642,13 @@ IRAM_ATTR void wiog_snr_info_task(void *pvParameter) {
 				add_entry_I32(&pl, dt_snr_info, 0, snr_buf[i].snr, snr_buf[i].dev_uid);
 
 			//Data to GW
-			send_data_frame(&pl, pl.ix + sizeof(pl.man));
+			send_data_frame(&pl, pl.ix + sizeof(pl.man), REPEATER);
 			//Buffer reset
 			ix_snr_buf = 0;
 			ov_snr_buf = false;
 			loop = 0;
 
-hexdump((uint8_t*)&pl, pl.ix + sizeof(pl.man) );
+//hexdump((uint8_t*)&pl, pl.ix + sizeof(pl.man) );
 		}
 		loop++;
 	}
@@ -710,7 +761,11 @@ void app_main(void) {
 	//Wifi-Kanal-Scan
 	wiog_set_channel(wifi_channel);
 	//actor sendet immer mit voller Leistung
-    esp_wifi_set_max_tx_power(MAX_TX_POWER);
+	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
+#ifdef DEBUG_X
+	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MIN_TX_POWER));
+#endif
+
     // Ende Initialisierung ----------------------------------------------------------------------
 
 
@@ -721,14 +776,24 @@ void app_main(void) {
 		//ggf Channel-Scan vweranlassen
 		if (wifi_channel == 0) wiog_set_channel(0);
 
-		char txt[] = {"Hello World - I'm an actor !"};
+		//Test-Frame senden ---------------------------------------------
+		char txt[] = {"Hello World - How are you ? Das ist ein Test"};
 
 		uint8_t sz = strlen(txt) & 0xFF;
 		uint8_t data[sz+1];				//Byte 0 => Längenbyte
 		memcpy(&data[1], txt, sz);		//Byte 1 => Datenbereich
 		data[0] = sz;
-//printf("Send Dummy-Data\n");
-//		send_data_frame(data);
+
+		payload_t pl;
+		pl.ix = 0;
+		set_management_data(&pl.man);
+		add_entry_str (&pl, dt_txt_info, 0x55, txt);
+
+		//Data to GW
+		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
+
+		//----------------------------------------------------------------
+
 
 		vTaskDelay(interval_ms / portTICK_PERIOD_MS);
 
@@ -765,4 +830,16 @@ void add_fid(uint32_t fid) {
 
 //----------------------------------------------------------------------------------------
 
-
+void print_nib() {
+	printf("NIB TS: %lld DevCnt: %d\n", nib.ts, nib.dev_cnt);
+	//hexdump((uint8_t*) nib.dev_info, evt.data_len);
+	//hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
+	for (int i=0; i<MAX_SLOTS; i++) printf("%05d | ", nib.slot_info[i]);
+	printf("\n");
+	for (int i=0; i<nib.dev_cnt; i++){
+		printf("%05d: ", nib.dev_info[i].dev_uid);
+		for (int j=0; j<MAX_NODES; j++)
+			printf(" -> %05d/%d", nib.dev_info[i].node_infos[j].node_uid, nib.dev_info[i].node_infos[j].snr);
+		printf("\n");
+	}
+}

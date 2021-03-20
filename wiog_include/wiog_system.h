@@ -21,9 +21,9 @@
 #define MS 1/portTICK_PERIOD_MS	//1 Tick je 10ms
 #define WORKING_CHANNEL 3		//f. Enntwicklung, Kanal legt Raspi fest
 
-#define MAX_DEVICES	48			//Max n Devices lassen sich im Netzwerk verwalten (s. Meshliste)
-#define MAX_NODES	8			//Max n-1 Nodes + 1GW lassen sich verwalten
-#define MAX_SLOTS	8			//Anzahl der Node-Time-Slots
+#define MAX_DEVICES	64			//Max n Devices lassen sich im Netzwerk verwalten (s. Meshliste)
+#define MAX_NODES	4			//Max n-1 Nodes + 1GW lassen sich verwalten
+#define MAX_SLOTS	4			//Anzahl der Node-Time-Slots
 
 static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .policy=WIFI_COUNTRY_POLICY_AUTO};
 
@@ -106,7 +106,7 @@ typedef enum {
 	DATA_TO_DEVICE,
 	RETURN_FROM_ACTOR,
 	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
-	BC_NIB				//Boradcast Node Info Block
+	BC_NIB,				//Boradcast Node Info Block
 } vtype_t;
 
 
