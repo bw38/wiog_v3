@@ -170,13 +170,14 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         					break;
         				case 11:
         					fcUART = 0;
+
         					if ((rx_char == '\n') && (crc.i16 == crc16(line, ixLine-3)))
         					{
         						if (cFTyp == 'n') { 	// Node-Info-Block
         							memcpy(&nib , pl.data, pl.data_len);
         							broadcast_nib(&nib);
-LED_BL_TOGGLE;
         						} //NIB
+
         						else if (cFTyp == 'y') {	//Test Loop
 
         							logLV("Empfangen: ", pl.data_len);

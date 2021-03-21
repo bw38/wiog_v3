@@ -114,16 +114,15 @@ int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid){
 
 //Priorität eines Knotens (node_uid) für Kommunikation mit Device (dev_uid)
 //höchste Prio = 0
-//DevUID im NIB nicht gefunden = -1
+//GW und Null-Einträge werden nicht mitgezählt
 int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid ) {
-	int res = -1;
+	int res = 0;
 	int ix = nib_get_uid_ix(pnib, dev_uid);
 	if (ix >= 0) {
 		for (int i = 0; i < MAX_NODES; i++) {
-			if (pnib->dev_info[ix].node_infos[i].node_uid == node_uid) {
-				res = i;
-				break;
-			}
+			dev_uid_t uid = pnib->dev_info[ix].node_infos[i].node_uid;
+			if (uid == node_uid) break;
+			else if ((uid != 0) && (uid != GW_UID)) res++;
 		}
 	}
 	return res;

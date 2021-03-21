@@ -47,6 +47,7 @@ bool waked_up;
 
 SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
 uint32_t ack_id = 0;		//Vergleich mit FrameID
+uint32_t tx_id;
 
 int64_t timer;	//TEST !!!!!!!
 
@@ -115,12 +116,13 @@ pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
 
 		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
 		if (pHdr->vtype == ACK_FROM_GW) {
-			ack_id = pHdr->frameid;	//Tx-Wiederholungen stoppen
+//			ack_id = pHdr->frameid;	//Tx-Wiederholungen stoppen
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
 			rtc_interval_ms = pHdr->interval_ms;
 			//bei Kanal-Abweichung Channel-Scan veranlassen
 			if (rtc_wifi_channel != pHdr->channel) rtc_wifi_channel = 0;
-			xSemaphoreGive(ack_timeout_Semaphore);
+			if ((tx_id == pHdr->frameid) && pHdr->interval_ms > 0)
+				xSemaphoreGive(ack_timeout_Semaphore);
 
 		}
 
@@ -204,14 +206,16 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 
 		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
+		tx_id = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
 			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
 			((wiog_header_t*) buf)->seq_ctrl++ ;
+
 			//min. Ruhezeit zw. zwei Sendungen
-			vTaskDelay(75*MS);
+			vTaskDelay(50*MS);
 		}
 
 		free(evt.data);
@@ -235,6 +239,7 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	tx_frame.wiog_hdr.species = species;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
+	tx_frame.wiog_hdr.tagD = 0;
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 
 	tx_frame.data = malloc(len);
@@ -301,6 +306,7 @@ void set_management_data (management_t* pMan) {
 	pMan->cnt_no_response = rtc_cnt_no_response;
 	int8_t pwr;
 	esp_wifi_get_max_tx_power(&pwr);
+	pMan->tx_pwr = pwr;
 	pMan->cnt_entries = 0;
 //	ixtxpl = 0;
 }
@@ -330,8 +336,7 @@ void wiog_set_channel(uint8_t ch) {
 		rtc_tx_pwr = MAX_TX_POWER;
 		ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(rtc_tx_pwr));
 
-//ch=1 !!!!!
-		for (ch = 3; ch <= wifi_country_de.nchan; ch++) {
+		for (ch = 1; ch <= wifi_country_de.nchan; ch++) {
 			ESP_ERROR_CHECK( esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE));
 			//Tx-Frame in Tx-Queue stellen
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
@@ -448,7 +453,7 @@ bool wiog_sensor_init() {
 void app_main(void) {
 
 	wiog_sensor_init();
-vTaskDelay (300*MS);
+//vTaskDelay (300*MS);
 
 	//Test-Frame senden ---------------------------------------------
 	char txt[] = {"Hello World - How are you ? Das ist ein Test"};

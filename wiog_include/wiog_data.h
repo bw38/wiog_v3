@@ -49,7 +49,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t  datatype;
 	uint8_t  index;
 	uint8_t  status;	//0 = Ok / !=0 -> Fehler
-	int32_t value;
+	int32_t  value;
 } df_i32_t;
 
 typedef struct __attribute__((packed)) {
@@ -57,7 +57,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t  datatype;
 	uint8_t  index;
 	uint8_t  status;	//0 = Ok / !=0 -> Fehler
-	int64_t value;
+	int64_t  value;
 } df_i64_t;
 
 typedef struct __attribute__((packed)) {

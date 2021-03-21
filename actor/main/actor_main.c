@@ -51,7 +51,7 @@ uint32_t acked_frame_id;
 species_t species = ACTOR;
 uint8_t slot = MAX_SLOTS;
 
-SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
+//SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
 
 //Daten
 uint8_t   wifi_channel;
@@ -86,13 +86,16 @@ uint8_t ix_snr_buf = 0;		//Index aktuelle Position
 bool ov_snr_buf = false;	//Overflow-Flag
 //------------------------------------------------------------------------
 
-SemaphoreHandle_t return_timeout_Semaphore = NULL;
+SemaphoreHandle_t ack_timeout_Semaphore = NULL;
 
-uint32_t ack_id = 0;		//Vergleich mit FrameID
+uint32_t ack_id = 0;		//Vergleich mit FrameID	- Tx-Wiederholungen
+uint32_t acked_fid;			//Node-Wiederholung
+
 
 //Prototypen
 //static void repeat_frame_to_gw_task (void *pvParameter);
-bool is_fid_handled(uint32_t fid);
+//bool is_fid_handled(uint32_t fid);
+//void add_fid(uint32_t fid);
 void print_nib();
 
 
@@ -123,15 +126,17 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	}
 }
 
-//verzögertes Senden von Datenpaketen (Repeater-Slots)
+//verzögertes Senden von Datenpaketen (Node-Slots)
 void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	wiog_event_txdata_t* ptx_frame = arg;
-	if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE) {
-			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
-	}
-	free(ptx_frame);
-printf("Tx in Slot: %d\n", ptx_frame->wiog_hdr.uid);
+	//ACK wurde für diese FID bereits empfangen
+	bool b1 = (ptx_frame->wiog_hdr.vtype == DATA_TO_GW) && (acked_fid == ptx_frame->wiog_hdr.frameid);
 
+	if (!b1)
+		if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
+			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
+
+	free(ptx_frame);
 }
 
 
@@ -186,7 +191,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			ESP_ERROR_CHECK(esp_timer_start_once(h_timer1, (slot+1) * SLOT_TIME_US)); 	// Start the timer, in Slot(0) antwortet der GW
 
 			//SNR-Info an GW senden ---------------------------
-			//Info-Pakt im Repeater-Slot 50+n*50ms
+			//Info-Pakt im Repeater-Slot
 			//kein ACK erwartet
 			wiog_event_txdata_t* ptx_frame2 = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
 			ptx_frame2->crypt_data = false;
@@ -212,10 +217,11 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			esp_timer_handle_t h_timer2;
 			ESP_ERROR_CHECK(esp_timer_create(&timer_args2, &h_timer2));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, 50000 + slot * 10000));  //slot(0) => 50ms / slot(1) => 60ms ...
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, 5000 + slot * 5000));  //slot(0) => 5ms / slot(1) => 10ms ...
 		}	// Ende Kanalanfrage ----------------------------------------------------------------
 
 		else
+		//Empfang eine NIB Broadcast von GW oder anderem Node
 		if ((pHdr->vtype == BC_NIB) && (species == REPEATER)) {
 			int blocksz = evt.data_len;
 			if (blocksz > 0) {
@@ -255,7 +261,8 @@ print_nib();
 		//DataFrame Sensor/Actor/Node ==> GW
 		//SNR zwischenspeichern (Rx-Quality am Node)
 		//Prüfen, ob Node Prio zur Weiterleitung hat (NIB)
-		if ((pHdr->vtype == DATA_TO_GW) && (species == REPEATER)) {
+		//Node-Hopping verhindern
+		if ((pHdr->vtype == DATA_TO_GW) && (species == REPEATER) && (pHdr->mac_from[5] != REPEATER)) {
 			snr_buf[ix_snr_buf].dev_uid = evt.wiog_hdr.uid;
 			snr_buf[ix_snr_buf].snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
 			ix_snr_buf++;
@@ -265,29 +272,35 @@ print_nib();
 			}
 			//Daten wieder in die Queue stellen
 			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
-			if ( ix == pHdr->seq_ctrl) {
-				wiog_event_txdata_t tx_frame;
-				uint8_t* data = malloc(evt.data_len);
-				memcpy(data, evt.data, evt.data_len);
-				tx_frame.wiog_hdr = evt.wiog_hdr;
-				tx_frame.crypt_data = false;	//Verschlüsselung nicht ändern
-				tx_frame.target_time = 0;		//obsolete
-				tx_frame.tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
-				tx_frame.wiog_hdr.tagC = my_uid;//zur freien Auswertung
-				tx_frame.data_len = evt.data_len;
-				tx_frame.data = data;
-				tx_frame.wiog_hdr.mac_from[5] = REPEATER;
-				if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
-					ESP_LOGW("Tx-Queue: ", "Tx Data fail");
-			}
-printf("Add SNR-Buf: %d - ix: %d\n", ix_snr_buf, ix);
-//
+			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+			uint8_t* data = malloc(evt.data_len);
+			memcpy(data, evt.data, evt.data_len);
+			ptx_frame->wiog_hdr = evt.wiog_hdr;
+			ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
+			ptx_frame->target_time = 0;		//obsolete
+			ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
+			ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
+			ptx_frame->wiog_hdr.tagB = evt.wiog_hdr.seq_ctrl; //info
+			ptx_frame->data_len = evt.data_len;
+			ptx_frame->data = data;
+			ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
+
+			//über HiRes-Timer in die Queue stellen
+			const esp_timer_create_args_t timer_args = {
+	  	  		  .callback = &cb_tx_delay_slot,
+				  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
+				  .name = "scan_snr_info"
+			};
+			esp_timer_handle_t h_timer;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 5000 + ix * 5000));
 		}
 
 		else
 
 		//ACK des GW durch Nodes mit Prio 0+1 broadcasten
 		if ((pHdr->vtype == ACK_FROM_GW) && (species == REPEATER) && (pHdr->uid != my_uid ) && (pHdr->mac_from[5] == GATEWAY)) {
+			acked_fid = pHdr->frameid;
 			//Daten wieder in die Queue stellen
 			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
 			if (( ix >= 0 ) && (ix < 2)) {
@@ -296,7 +309,7 @@ printf("Add SNR-Buf: %d - ix: %d\n", ix_snr_buf, ix);
 				ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
 				ptx_frame->target_time = 0;		//obsolete
 				ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
-				ptx_frame->wiog_hdr.tagC = my_uid;//zur freien Auswertun
+				ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
 				ptx_frame->data_len = 0;			//Ack-Frame hat keine Daten
 				ptx_frame->data = NULL;
 				ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
@@ -319,7 +332,10 @@ printf("Add SNR-Buf: %d - ix: %d\n", ix_snr_buf, ix);
 
 			// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
 			if (pHdr->vtype == ACK_FROM_GW) {
-				ack_id = pHdr->frameid;	//Tx-Wiederholungen stoppen
+				//Tx-Wiederholungen stoppen
+				ack_id = pHdr->frameid;
+//				xSemaphoreGive(ack_timeout_Semaphore);
+printf("***** %8x \n", ack_id);
 				//Interval-Info auf Plausibilität prüfen
 				if ((pHdr->interval_ms >= ACTOR_MIN_SLEEP_TIME_MS) && (pHdr->interval_ms <= ACTOR_MAX_SLEEP_TIME_MS))
 					interval_ms = pHdr->interval_ms;
@@ -518,16 +534,26 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 
 		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
+		uint32_t tx_id = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
-			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
-			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
+			bool b = false;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
-			((wiog_header_t*) buf)->seq_ctrl++ ;
-			//min. Ruhezeit zw. zwei Sendungen
-			vTaskDelay(75*MS);
-		}
+			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
+			//warten auf Empfang eines ACK
+			for (int j=0; j<5; j++) {
+				vTaskDelay(10*MS);
+				b = (ack_id == tx_id);//beide Schleifen beenden
+				if (b) break;
+			}
+			if (b) break;
+			/*
+			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
 
+			}
+			*/
+			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
+		}
 		free(evt.data);
 	}
 }
@@ -729,7 +755,7 @@ void app_main(void) {
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
 	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 4096, NULL, 5, NULL);
 
-	return_timeout_Semaphore = xSemaphoreCreateBinary();
+	ack_timeout_Semaphore = xSemaphoreCreateBinary();
 	if (species == REPEATER) {
 		xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 4096, NULL, 2, NULL);
 		xTaskCreate(wiog_snr_info_task, "wiog_snr_info_task", 4096, NULL, 2, NULL);
@@ -801,7 +827,7 @@ void app_main(void) {
 }
 
 // -----------------------------------------------------------------------------------
-
+/*
 //Ringpuffer, mehrfache Bearbeitung von FID verhindern
 #define FID_RBUF_SZ 8
 uint8_t fid_rbuf_ix = 0;	//Index Schreibposition
@@ -827,7 +853,7 @@ void add_fid(uint32_t fid) {
 	fid_rbuf_ix++;
 	fid_rbuf_ix &= FID_RBUF_SZ-1;
 }
-
+*/
 //----------------------------------------------------------------------------------------
 
 void print_nib() {

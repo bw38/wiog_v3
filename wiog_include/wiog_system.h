@@ -81,6 +81,9 @@ static const mac_addr_t mac_repeater = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x04
 
 typedef uint16_t dev_uid_t;	//16 Bit Geräte-UID -> Gefahr der ID-Dopplung !
 
+#define GW_UID 0xFFFF
+
+
 //entspricht dem letzten Byte der MAC-Adresse (mac5)
 typedef enum {
 	DUMMY = 0,
@@ -118,20 +121,21 @@ typedef struct __attribute__((packed)){
 	mac_addr_t mac_from;
 	mac_addr_t mac_net;
 	uint16_t seq_ctrl;
-	//Vendor-Header 24..37
+	//Vendor-Header 24..41
 	uint8_t vtype;
 	uint8_t species;
 	int8_t txpwr;
 	uint8_t channel;
 	uint16_t uid;
 	uint32_t frameid;			//Frame-ID f. verify Ack, Random32
+	uint32_t interval_ms;
 	union {
 		struct {				//verwendbar als freie Daten oder interval im Ack-Frame
 			uint8_t tagA;		//Zusatz-Info Device -> GW
 			uint8_t tagB;
 			int16_t tagC;
 		};
-		uint32_t interval_ms;	//Interval-Info GW -> Device in ms, 0 => Sensor Standby for Data
+		uint32_t tagD;	//Interval-Info GW -> Device in ms, 0 => Sensor Standby for Data
 	};
 } wiog_header_t;
 
