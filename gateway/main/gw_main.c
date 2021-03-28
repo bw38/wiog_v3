@@ -43,6 +43,9 @@ dev_uid_t my_uid = 0;
 uint32_t ack_id = 0;		//Vergleich mit FrameID
 
 
+
+uint8_t test = 0;
+
 // Prototypen
 // ------------
 //Weiterleitung doppelte Frame-ID an RPi verhindern
@@ -52,6 +55,8 @@ bool is_dbls_fid(uint32_t fid);
 //Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
 void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
 void bc_nib_immediately();
+device_info_t* get_device_info(dev_uid_t uid);
+uint32_t get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfoBlock ermitteln, ggf Default
 
 //---------------------------------------------------------------------------------------------------------------
 
@@ -79,7 +84,7 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	}
 }
 
-/*
+
 //verzögertes Senden von Datenpaketen (Node-Slots)
 void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	wiog_event_txdata_t* ptx_frame = arg;
@@ -88,7 +93,7 @@ void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	}
 	free(ptx_frame);
 }
-*/
+
 
 //Verarbeitung eines empfangenen Datenpaketes
 static void wiog_rx_processing_task(void *pvParameter) {
@@ -128,10 +133,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 		else
 		//Datenpaket von Device auswerten
-		if  (pHdr->vtype == DATA_TO_GW) { //&&(pHdr->mac_from[5] == 4)) {  //!!!!!!!!!!!!!!!!!!! //]&&(!is_dbls_fid(evt.wiog_hdr.frameid))) {
-			//Prio aus NIB f. Tx-Slot
-//			int ix = nib_get_priority(&nib, pHdr->uid, my_uid);
-//			if (ix < 0) ix = MAX_SLOTS;
+		if  ((pHdr->vtype == DATA_TO_GW)) {  // &&(pHdr->mac_from[5] == 4)) {  //!!!!!!!!!!!!!!!!!!! //]&&(!is_dbls_fid(evt.wiog_hdr.frameid))) {
 
 			//Ack an Device senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
@@ -146,13 +148,32 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			ptx_frame->wiog_hdr.vtype = ACK_FROM_GW;
 			ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
 
-ptx_frame->wiog_hdr.interval_ms = 15002;	//interval ais DeviceInfo ermitteln	//0 setzen wenn Sensor Standby
+			//Gerätespezifisches Interval zurückliefern
+			device_info_t* pdev_info = get_device_info(pHdr->uid);
+			if (pdev_info != NULL)
+				ptx_frame->wiog_hdr.interval_ms = pdev_info->interval_ms ;	//interval aus DeviceInfoBlock
+			else 	//Defaultwerte
+				ptx_frame->wiog_hdr.interval_ms = get_def_sleep_time_ms(pHdr->species);	//interval aus Default
+logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 
+/*
 			if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
 				ESP_LOGW("Tx-Queue: ", "Channelscan fail");
-
 			free(ptx_frame);
+*/
 
+			//ACK 2ms verzögren
+			const esp_timer_create_args_t timer_args = {
+  	  			  .callback = &cb_tx_delay_slot,
+				  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+				  .name = "bc_act_from_gw"
+			};
+
+			esp_timer_handle_t h_timer;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
+
+			//per UART an RPi-GW
 			if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
 				set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
 				//Daten via UART an RPi-GW senden	A-Frame
@@ -442,9 +463,6 @@ void app_main(void) {
 
 	//Gateway mit max tx power
 	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
-#ifdef DEBUG_X
-	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MIN_TX_POWER));
-#endif
 
 	int8_t maxpwr;
 	esp_wifi_get_max_tx_power(&maxpwr);
@@ -452,6 +470,9 @@ void app_main(void) {
 
 	my_uid = GW_UID; 	//get_uid();	//Geräte-ID berechnen
     logLV("Gateway booted - UID: ", my_uid);
+
+    bzero(&dib, sizeof(dib));
+    send_uart_frame(NULL, 0, 'H');	//Send Hello-Frame an RPi
 
     while (true) {
 
@@ -523,6 +544,32 @@ void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr) {
 void bc_nib_immediately() {
 	send_uart_frame(NULL, 0, 'I');
 }
+
+// -------------------------------------------------------------------------------------------
+//Device - Info - Block
+
+//Retrun Zeiger auf Device-Info oder NULL
+device_info_t* get_device_info(dev_uid_t uid) {
+	int n = sizeof(dib.device_info) / sizeof(device_info_t);
+	for (int i=0; i<n; i++)
+		if (dib.device_info[i].uid == uid) return &dib.device_info[i];
+	return NULL;
+}
+
+uint32_t get_def_sleep_time_ms(uint8_t species){
+	uint32_t res = 0;
+	switch (species) {
+		case SENSOR: if (dib.def_sensor_interval_ms > 0) return dib.def_sensor_interval_ms; break;
+		case ACTOR:  if (dib.def_actor_interval_ms  > 0) return dib.def_actor_interval_ms;  break;
+		case REPEATER: 	 if (dib.def_node_interval_ms   > 0) return dib.def_node_interval_ms;   break;
+	}
+	return res;
+}
+
+
+
+
+
 // *******************************************************************************************************
 //Obsolete Funktionen / Variablen /etc
 

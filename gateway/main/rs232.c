@@ -178,6 +178,11 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         							broadcast_nib(&nib);
         						} //NIB
 
+        						else if (cFTyp == 'd') {	//Device-Info-Block
+        							bzero(&dib, sizeof(dib));
+        							memcpy(&dib , pl.data, pl.data_len);
+        						}
+
         						else if (cFTyp == 'y') {	//Test Loop
 
         							logLV("Empfangen: ", pl.data_len);

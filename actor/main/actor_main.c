@@ -29,10 +29,6 @@
 #endif
 
 
-#define ACTOR_MIN_SLEEP_TIME_MS 5*1000		//min 5Sek
-#define ACTOR_MAX_SLEEP_TIME_MS 60*60*1000	//max 1h
-#define ACTOR_DEF_SLEEP_TIME_MS 30*1000		//default 30sek
-
 payload_t tx_payload;
 payload_t rx_payload;
 //int ixtxpl = 0;
@@ -90,7 +86,7 @@ SemaphoreHandle_t ack_timeout_Semaphore = NULL;
 
 uint32_t ack_id = 0;		//Vergleich mit FrameID	- Tx-Wiederholungen
 uint32_t acked_fid;			//Node-Wiederholung
-
+uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 
 //Prototypen
 //static void repeat_frame_to_gw_task (void *pvParameter);
@@ -330,12 +326,12 @@ print_nib();
 		//Frame an eigene UID adressiert
 		if (pHdr->uid == my_uid ) {
 
-			// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
-			if (pHdr->vtype == ACK_FROM_GW) {
+			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
+			if ((pHdr->vtype == ACK_FROM_GW) && (pHdr->frameid == tx_fid)) {
 				//Tx-Wiederholungen stoppen
-				ack_id = pHdr->frameid;
-//				xSemaphoreGive(ack_timeout_Semaphore);
-printf("***** %8x \n", ack_id);
+				tx_fid = 0;
+				xSemaphoreGive(ack_timeout_Semaphore);
+
 				//Interval-Info auf Plausibilität prüfen
 				if ((pHdr->interval_ms >= ACTOR_MIN_SLEEP_TIME_MS) && (pHdr->interval_ms <= ACTOR_MAX_SLEEP_TIME_MS))
 					interval_ms = pHdr->interval_ms;
@@ -534,24 +530,16 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 
 		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
-		uint32_t tx_id = evt.wiog_hdr.frameid;
+		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
-			bool b = false;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
 			//warten auf Empfang eines ACK
-			for (int j=0; j<5; j++) {
-				vTaskDelay(10*MS);
-				b = (ack_id == tx_id);//beide Schleifen beenden
-				if (b) break;
-			}
-			if (b) break;
-			/*
 			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
-
+				break; //ACK empfangen -> Wiederholung abbrechen
 			}
-			*/
+
 			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
 		}
 		free(evt.data);
@@ -788,9 +776,6 @@ void app_main(void) {
 	wiog_set_channel(wifi_channel);
 	//actor sendet immer mit voller Leistung
 	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
-#ifdef DEBUG_X
-	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MIN_TX_POWER));
-#endif
 
     // Ende Initialisierung ----------------------------------------------------------------------
 

@@ -156,6 +156,26 @@ typedef struct __attribute__((packed)) {
 } node_dev_info_t;
 
 
+// ---------------------------------------------------------------------
+
+// Device-Info-Block
+// Geräte-Informationen RPi-GW -> ESP-GW -> Actor/Sensor
+//Einzelinformation
+typedef struct __attribute__((packed)) {
+	dev_uid_t uid;
+	uint8_t  species;
+	uint32_t interval_ms;
+	uint32_t data_len;
+	uint8_t* data;
+} device_info_t;
+
+//Datenstruktur wird im RPi - TDeviceInfoBlock.Data2Buffer() zusammengestellt
+typedef struct __attribute__((packed)) {
+	uint32_t	  def_sensor_interval_ms;
+	uint32_t	  def_actor_interval_ms;
+	uint32_t	  def_node_interval_ms;
+	device_info_t device_info[MAX_DEVICES-1];
+} device_info_block_t;
 
 
 // ---------------------------------------------------------------------

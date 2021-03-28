@@ -30,6 +30,9 @@
 #define LED_RT_OFF		gpio_set_level(LED_RT, 0)
 #define LED_RT_TOGGLE	gpio_set_level(LED_RT, !gpio_get_level(LED_RT))
 
+//statisches Array mit Default- und Geräteinformationen
+//Daten werden von RPi im d-Frame bereitgestellt
+device_info_block_t dib;
 
 
 //Prioritäten und Slots (synchron in allen Nodes (incl gw))

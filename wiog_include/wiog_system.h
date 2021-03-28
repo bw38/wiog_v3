@@ -29,7 +29,7 @@ static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .p
 
 //Wertebereich esp_wifi_set_max_tx_power(x)
 #ifdef DEBUG_X	//reduzierte Leistung im Debug-Modus
-#define MAX_TX_POWER 20  	// => 5dBm
+#define MAX_TX_POWER 84 //20  	// => 5dBm
 #define MIN_TX_POWER 8		// => 2dBm
 #else
 #define MAX_TX_POWER 84  	// => 20dBm
@@ -52,6 +52,16 @@ static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .p
 #define FIRST_SLEEP_MS			3*SEK
 
 #define SLOT_TIME_US 5000		//Repeater und Gateway - n ms
+
+
+#define SENSOR_MIN_SLEEP_TIME_MS  10*SEK
+#define SENSOR_DEF_SLEEP_TIME_MS  10*MIN
+#define SENSOR_MAX_SLEEP_TIME_MS  24*STD
+
+#define ACTOR_MIN_SLEEP_TIME_MS 5*1000		//min 5Sek
+#define ACTOR_MAX_SLEEP_TIME_MS 60*60*1000	//max 1h
+#define ACTOR_DEF_SLEEP_TIME_MS 30*1000		//default 30sek
+
 
 
 #define AES_KEY_SZ 32	//Key - Länge in Bytes => 256Bit
