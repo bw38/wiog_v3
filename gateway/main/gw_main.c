@@ -38,7 +38,9 @@ static xQueueHandle wiog_rx_queue;
 #define WIOG_TX_QUEUE_SIZE 6
 static xQueueHandle wiog_tx_queue;
 
-SemaphoreHandle_t return_timeout_Semaphore = NULL;
+//SemaphoreHandle_t return_timeout_Semaphore = NULL;
+SemaphoreHandle_t ack_timeout_Semaphore = NULL;
+
 dev_uid_t my_uid = 0;
 
 uint32_t ack_id = 0;		//Vergleich mit FrameID
@@ -196,12 +198,12 @@ logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 		}// SNR Info To GW
 
 		else
-		if (pHdr->vtype == ACK_FROM_DEVICE) {
+		if ((pHdr->vtype == ACK_FROM_DEVICE) && (pHdr->frameid == tx_fid)) {
 			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
-			if ((pHdr->vtype == ACK_FROM_GW) && (pHdr->frameid == tx_fid)) {
-				//Tx-Wiederholungen stoppen
-				tx_fid = 0;
-				xSemaphoreGive(ack_timeout_Semaphore);
+			//Tx-Wiederholungen stoppen
+logLV("Ack: ", tx_fid);
+			tx_fid = 0;
+			xSemaphoreGive(ack_timeout_Semaphore);
 		}
 
 
@@ -321,14 +323,15 @@ void wiog_tx_processing_task(void *pvParameter) {
 		//max Wiederholungen bis ACK von Device oder Node
 		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
-			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
-
-			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
-			ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false)); //tx_len 24 .. 1500
-			((wiog_header_t*) buf)->seq_ctrl++ ;
-			//min. Ruhezeit zw. zwei Sendungen
-			if (evt.tx_max_repeat > 0) vTaskDelay(50*MS);
+			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
+			//warten auf Empfang eines ACK
+			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
+				break; //ACK empfangen -> Wiederholung abbrechen
+			}
+
+			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
 		}
 
 		free(evt.data);
@@ -442,7 +445,7 @@ void app_main(void) {
 
 //	xTaskCreate(wiog_manage_slots_task, "wiog_slots_task", 2048, NULL, 0, NULL);
 
-	return_timeout_Semaphore = xSemaphoreCreateBinary();
+	ack_timeout_Semaphore = xSemaphoreCreateBinary();
 
 	//Liste zu Geräteverwaltung löschen
 	nib_clear_all(&nib);

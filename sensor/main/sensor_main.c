@@ -44,6 +44,7 @@ SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
 uint32_t ack_id = 0;		//Vergleich mit FrameID
 uint32_t tx_fid;
 
+
 int64_t timer;	//TEST !!!!!!!
 
 //SystemVariablen zur Steurung der Sensoren
@@ -58,8 +59,25 @@ static xQueueHandle wiog_rx_queue;
 static xQueueHandle wiog_tx_queue;
 
 SemaphoreHandle_t ack_timeout_Semaphore = NULL;
+uint32_t interval_ms;
+
+//Prototypen
+void set_dbls_fid(uint32_t fid);
+bool is_dbls_fid(uint32_t fid);
 
 //---------------------------------------------------------------------------------------------------------------
+
+__attribute__((weak)) void rx_data_handler(uint8_t* buf, uint16_t len)  {
+	//weak linkage
+	hexdump(buf, len);
+}
+
+
+__attribute__((weak)) void init_rtc(void)  {
+	//weak linkage
+}
+
+// --------------------------------------------------------------------------------------------------------------
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
 IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t type)
@@ -90,6 +108,16 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 }
 
 
+//verzögertes Senden von Datenpaketen (Node-Slots)
+void cb_tx_delay_slot(void* arg) {  //one-shot-timer
+	wiog_event_txdata_t* ptx_frame = arg;
+	if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE) {
+			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
+	}
+	free(ptx_frame);
+}
+
+
 //Verarbeitung eines empfangenen Datenpaketes
 IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 {
@@ -99,9 +127,10 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
 		wiog_header_t *pHdr = &evt.wiog_hdr;
-int tix = (esp_timer_get_time() - timer) / 1000;
-printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
-pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
+
+//int tix = (esp_timer_get_time() - timer) / 1000;
+//printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
+//pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
 
 		// Antwort auf Channel-Scan ------------------------------------------
 		if ((rtc_wifi_channel == 0) && (pHdr->vtype == ACK_FOR_CHANNEL))
@@ -111,57 +140,64 @@ pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
 
 		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
 		if ((pHdr->vtype == ACK_FROM_GW) && (tx_fid == pHdr->frameid)) {
-			//Wiederholung stoppen
-			tx_fid = 0;
-			xSemaphoreGive(ack_timeout_Semaphore);
 
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
-			rtc_interval_ms = pHdr->interval_ms;
+			interval_ms = pHdr->interval_ms;
 			//bei Kanal-Abweichung Channel-Scan veranlassen
 			if (rtc_wifi_channel != pHdr->channel) rtc_wifi_channel = 0;
 
-
+			//Wiederholung stoppen
+			tx_fid = 0;
+			//Mainloop fortsetzen
+			xSemaphoreGive(ack_timeout_Semaphore);
 
 		}
 
-		//Daten vom Gateway entschlüsseln und verarbeiten -------------------
-		//als Antwort auf zuvor gesendeten Tx-Frame ID
-		if ((actual_frame_id == pHdr->frameid) && (pHdr->vtype == RETURN_FROM_GW)) {
+		//Empfang eines Datenframes vom RPi-Gateway
+		if (pHdr->vtype == DATA_TO_DEVICE) {
+			//Ack an Gateway senden
+			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+			ptx_frame->crypt_data = false,
+			ptx_frame->target_time = 0,
+			ptx_frame->data_len = 0,
+			ptx_frame->data = NULL,
+			//Header modifiziert als ACK zurücksenden
+			ptx_frame->wiog_hdr = evt.wiog_hdr;
+			ptx_frame->wiog_hdr.mac_from[5] = SENSOR;
+			ptx_frame->wiog_hdr.mac_to[5] = GATEWAY;
+			ptx_frame->wiog_hdr.vtype = ACK_FROM_DEVICE;
+			ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
+			ptx_frame->wiog_hdr.interval_ms = 0; // ??? interval_ms ;
 
-			actual_frame_id++;	// nur einmal bearbeiten -> id verfälschen
+			//ACK 2ms verzögren
+			const esp_timer_create_args_t timer_args = {
+  	  			  .callback = &cb_tx_delay_slot,
+				  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+				  .name = "bc_act_from_device"
+			};
+			esp_timer_handle_t h_timer;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
 
-			//Länge des verschlüsselten Datenblocks
-			int blocksz = evt.data_len;
-			if (blocksz > 0) {
-				//CBC-AES-Key
-				uint8_t key[] = {AES_KEY};
-				// Key um Frame.ID ergänzen
-				uint32_t u32 = pHdr->frameid;
-				key[28] = (uint8_t)u32;
-				key[29] = (uint8_t)(u32>>=8);
-				key[30] = (uint8_t)(u32>>=8);
-				key[31] = (uint8_t)(u32>>=8);
-
-				uint8_t payload[blocksz];
-				cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key));
-
-//				management_t* mgn = (management_t*)payload;
-
-				rtc_interval_ms = pHdr->interval_ms;
-
-				//Verarbeitung der Daten
-
-				//vom GW empfohlener Korrekturwert zur Einpegelung auf IDEAL_SNR
-				if (pHdr->txpwr < -4) rtc_tx_pwr += -4; else rtc_tx_pwr += pHdr->txpwr;
-				if (rtc_tx_pwr > MAX_TX_POWER) rtc_tx_pwr = MAX_TX_POWER;
-				if (rtc_tx_pwr < MIN_TX_POWER) rtc_tx_pwr = MIN_TX_POWER;
-
-				//Tx- Wiederholung abbrechen
-//				xSemaphoreGive(return_timeout_Semaphore);
+			//per weak-link an Datenauswertung übergeben
+			if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
+				set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
+				//Daten via UART an RPi-GW senden	A-Frame
+				//Datenblock entschlüsseln
+				uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
+				bzero(buf, evt.data_len);
+				if (wiog_decrypt_data(evt.data, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
+					rx_data_handler(buf, evt.data_len);
+				else
+					printf("Dercrpt Error");
 			}
 
-			free(evt.data);
-		}	// Data-Frame
+			interval_ms = pHdr->interval_ms;	//0 => ein weiterer Datenblock folgt
+			//Mainloop fortsetzen
+			xSemaphoreGive(ack_timeout_Semaphore);
+		}
+
+		free(evt.data);
 	}	// Rx-Queue
 }
 
@@ -331,9 +367,6 @@ printf("Set Channel: %d\n", rtc_wifi_channel);
 
 
 
-__attribute__((weak)) void init_rtc(void)  {
-	//weak linkage
-}
 
 //Initialisierung als Sensor
 bool wiog_sensor_init() {
@@ -362,6 +395,7 @@ bool wiog_sensor_init() {
 
     } else {
     	waked_up = true;
+    	interval_ms = rtc_interval_ms;
     }
 
     //bei wiederholt fehlendem Response -> ChannelScan erzwingen
@@ -426,18 +460,25 @@ void app_main(void) {
 	send_data_frame(&pl, pl.ix + sizeof(pl.man));
 
 	//----------------------------------------------------------------
+	while (true) {
 
-	//Antwort des Gateway/Node abwarten
-	if (xSemaphoreTake(ack_timeout_Semaphore, 250*MS) != pdTRUE)
-		rtc_cnt_no_response++;
+		//Antwort des Gateway/Node abwarten
+		if (xSemaphoreTake(ack_timeout_Semaphore, 250*MS) != pdTRUE) {
+			rtc_cnt_no_response++;
+			break;
+		}
 
+		//Interval == 0  => DataToDevice folgt
+		if (interval_ms != 0) break;
 
-	rtc_onTime += esp_timer_get_time() / 1000;
+	}
 
 	//Bereichsprüfung interval
-	if (rtc_interval_ms == 0) rtc_interval_ms = SENSOR_DEF_SLEEP_TIME_MS;
-	else if (rtc_interval_ms < SENSOR_MIN_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MIN_SLEEP_TIME_MS;
-	else if (rtc_interval_ms > SENSOR_MAX_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MAX_SLEEP_TIME_MS;
+	if (interval_ms < SENSOR_MIN_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MIN_SLEEP_TIME_MS;
+	else if (interval_ms > SENSOR_MAX_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MAX_SLEEP_TIME_MS;
+	else rtc_interval_ms = interval_ms;
+
+	rtc_onTime += esp_timer_get_time() / 1000;
 
 	esp_sleep_enable_timer_wakeup(rtc_interval_ms * 1000);
     rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
@@ -446,4 +487,30 @@ void app_main(void) {
 	esp_deep_sleep_start();
 
 }
+
+//Liste der letzten empfangenen Frame-ID
+//doppelte Bearbeitung verhindern
+//Ringpuffer
+#define DBLS_FID_SIZE 4	// 2^n !!
+uint32_t dbls_fid[DBLS_FID_SIZE];
+uint8_t  ix_dbls_fid = 0;
+
+
+void set_dbls_fid(uint32_t fid){
+	dbls_fid[ix_dbls_fid] = fid;
+	ix_dbls_fid++;
+	ix_dbls_fid &= DBLS_FID_SIZE - 1;	//Ringpuffer
+}
+
+bool is_dbls_fid(uint32_t fid) {
+	bool res = false;
+	for (int i=0; i<DBLS_FID_SIZE; i++) {
+		if (dbls_fid[i] == fid) {
+			res = true;
+			break;
+		}
+	}
+	return res;
+}
+
 

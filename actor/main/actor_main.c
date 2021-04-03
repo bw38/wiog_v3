@@ -92,11 +92,22 @@ uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 //static void repeat_frame_to_gw_task (void *pvParameter);
 //bool is_fid_handled(uint32_t fid);
 //void add_fid(uint32_t fid);
+
+void set_dbls_fid(uint32_t fid);
+bool is_dbls_fid(uint32_t fid);
+
 void print_nib();
 
 
 // ----------------------------------------------------------------------------------------------
 
+
+__attribute__((weak)) void rx_data_handler(uint8_t* buf, uint16_t len)  {
+	//weak linkage
+	hexdump(buf, len);
+}
+
+// ----------------------------------------------------------------------------------------------
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
 IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t type)
@@ -125,8 +136,9 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 //verzögertes Senden von Datenpaketen (Node-Slots)
 void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	wiog_event_txdata_t* ptx_frame = arg;
-	//ACK wurde für diese FID bereits empfangen
-	bool b1 = (ptx_frame->wiog_hdr.vtype == DATA_TO_GW) && (acked_fid == ptx_frame->wiog_hdr.frameid);
+	//ACK wurde für diese FID bereits empfangen -> Daten nicht wiederholen
+	bool b1 = ((ptx_frame->wiog_hdr.vtype == DATA_TO_GW) || (ptx_frame->wiog_hdr.vtype == DATA_TO_DEVICE))
+			&& (acked_fid == ptx_frame->wiog_hdr.frameid);
 
 	if (!b1)
 		if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
@@ -285,7 +297,7 @@ print_nib();
 			const esp_timer_create_args_t timer_args = {
 	  	  		  .callback = &cb_tx_delay_slot,
 				  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
-				  .name = "scan_snr_info"
+				  .name = "data to gw"
 			};
 			esp_timer_handle_t h_timer;
 			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
@@ -293,7 +305,6 @@ print_nib();
 		}
 
 		else
-
 		//ACK des GW durch Nodes mit Prio 0+1 broadcasten
 		if ((pHdr->vtype == ACK_FROM_GW) && (species == REPEATER) && (pHdr->uid != my_uid ) && (pHdr->mac_from[5] == GATEWAY)) {
 			acked_fid = pHdr->frameid;
@@ -314,6 +325,65 @@ print_nib();
 	  	  			  .callback = &cb_tx_delay_slot,
 					  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
 					  .name = "bc_act_from_gw"
+				};
+
+				esp_timer_handle_t h_timer3;
+				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer3));	//Create HiRes-Timer
+				ESP_ERROR_CHECK(esp_timer_start_once(h_timer3, (slot+1) * SLOT_TIME_US)); 	// Start the timer
+			}
+		}
+
+		else
+		// Daten von GW an Device repeaten, wenn nicht my_uid, Node-Hopping unterbinden
+		if ((pHdr->vtype == DATA_TO_DEVICE) && (species == REPEATER) && (pHdr->uid != my_uid) && (pHdr->mac_from[5] != REPEATER)) {
+			//Daten wieder in die Queue stellen
+			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
+			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+			uint8_t* data = malloc(evt.data_len);
+			memcpy(data, evt.data, evt.data_len);
+			ptx_frame->wiog_hdr = evt.wiog_hdr;
+			ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
+			ptx_frame->target_time = 0;		//obsolete
+			ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
+			ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
+			ptx_frame->wiog_hdr.tagB = evt.wiog_hdr.seq_ctrl; //info
+			ptx_frame->data_len = evt.data_len;
+			ptx_frame->data = data;
+			ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
+
+			//über HiRes-Timer in die Queue stellen
+			const esp_timer_create_args_t timer_args = {
+	  	  		  .callback = &cb_tx_delay_slot,
+				  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
+				  .name = "data to device"
+			};
+			esp_timer_handle_t h_timer;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 5000 + ix * 5000));
+		}
+
+
+		else
+		//ACK eines Devices (Sensor od Actor) durch Nodes mit Prio 0+1 broadcasten
+		if ((pHdr->vtype == ACK_FROM_DEVICE) && (species == REPEATER) && ((pHdr->mac_from[5] == SENSOR ) || (pHdr->mac_from[5] == ACTOR ))) {
+			acked_fid = pHdr->frameid;
+			//Daten wieder in die Queue stellen
+			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
+			if (( ix >= 0 ) && (ix < 2)) {
+				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
+				ptx_frame->wiog_hdr = evt.wiog_hdr;
+				ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
+				ptx_frame->target_time = 0;		//obsolete
+				ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
+				ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
+				ptx_frame->data_len = 0;			//Ack-Frame hat keine Daten
+				ptx_frame->data = NULL;
+				ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
+				//In Slot senden
+				const esp_timer_create_args_t timer_args = {
+	  	  			  .callback = &cb_tx_delay_slot,
+					  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+					  .name = "bc_act_from_device"
 				};
 
 				esp_timer_handle_t h_timer3;
@@ -366,6 +436,18 @@ print_nib();
 				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
 				ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
 
+				//per weak-link an Datenauswertung übergeben
+				if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
+					set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
+					//Daten via UART an RPi-GW senden	A-Frame
+					//Datenblock entschlüsseln
+					uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
+					bzero(buf, evt.data_len);
+					if (wiog_decrypt_data(evt.data, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
+						rx_data_handler(buf, evt.data_len);
+					else
+						printf("Dercrpt Error");
+				}
 			}
 		}
 
@@ -521,6 +603,9 @@ print_nib();
 		free(evt.data);
 	}	//while
 }
+
+
+
 
 
 //Zentraler Task zum Senden jedes Frame-Typs
@@ -868,6 +953,34 @@ void add_fid(uint32_t fid) {
 	fid_rbuf_ix &= FID_RBUF_SZ-1;
 }
 */
+
+
+//Liste der letzten empfangenen Frame-ID
+//doppelte Bearbeitung verhindern
+//Ringpuffer
+#define DBLS_FID_SIZE 4	// 2^n !!
+uint32_t dbls_fid[DBLS_FID_SIZE];
+uint8_t  ix_dbls_fid = 0;
+
+
+void set_dbls_fid(uint32_t fid){
+	dbls_fid[ix_dbls_fid] = fid;
+	ix_dbls_fid++;
+	ix_dbls_fid &= DBLS_FID_SIZE - 1;	//Ringpuffer
+}
+
+bool is_dbls_fid(uint32_t fid) {
+	bool res = false;
+	for (int i=0; i<DBLS_FID_SIZE; i++) {
+		if (dbls_fid[i] == fid) {
+			res = true;
+			break;
+		}
+	}
+	return res;
+}
+
+
 //----------------------------------------------------------------------------------------
 
 void print_nib() {
