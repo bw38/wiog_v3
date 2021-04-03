@@ -187,39 +187,18 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
 
         							logLV("Empfangen: ", pl.data_len);
         							send_uart_frame(pl.data, pl.data_len, 'Y');
-
         						}
 
 
-/*        						//Framebehandlung
-        						if (cFTyp == 'a') //GW-Response an Device senden
+        						if (cFTyp == 'a') 		//Datenframe an Device senden
         						{
- 									pl.wifi_channel = get_wifi_channel(); //tatsächlichen Arbeitskanal
-        							pl.repeater_is_present = repeater_is_present > 0; //Info, ob Repeater vorhanden
-        							pl.tx_pwr = 0;
-        							LED_RT_ON;
-        							//an device zurücksenden
-        							switch (pl.species) {
-        								case SPECIES_SENSOR:
-                							if ((sensor_rssi.uid == pl.devUID) && ((now() - sensor_rssi.ts) < 200))
-                								pl.tx_pwr = NORM_RX_LEVEL - sensor_rssi.val;
+        							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
+        							send_data_frame(pl.data, pl.data_len, uid);
+//logLV("Daten empfangen: ", uid);
 
-											esp_now_send(mac_sensor, pl.data, lenPL);
-											if (repeater_is_present > 0 )
-												esp_now_send(mac_repeater, pl.data, lenPL);
-											break;
-        								case ACTOR:
-        									esp_now_send(mac_actor, pl.data, lenPL);
-        									if (repeater_is_present > 0 )
-        										esp_now_send(mac_repeater, pl.data, lenPL);
-        									break;
-        								case REPEATER:
-        									esp_now_send(mac_repeater, pl.data, lenPL);
-        									break;
-        							} //switch species
-        							LED_GN_OFF;
         						} //Frametyp 'a'
 
+/*
         						if (cFTyp == 'b') //Steuerbefehl an Actor oder Repeater senden
         						{
         							LED_RT_ON;

@@ -116,7 +116,8 @@ typedef enum {
 	DATA_TO_GW,			//DataFrame Device an Gateway
 	ACK_FROM_GW,		//Empfangsbestätigung des GW
     RETURN_FROM_GW,
-	DATA_TO_DEVICE,
+	DATA_TO_DEVICE,		//Daten von RPi-GW via UART an Device senden
+	ACK_FROM_DEVICE,	//Empfangsbestätigung des Devices
 	RETURN_FROM_ACTOR,
 	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
 	BC_NIB,				//Boradcast Node Info Block
@@ -197,7 +198,7 @@ typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
 // --------------------------
 typedef struct __attribute__((packed)){
 	uint16_t  data_len;
-	uint8_t   data[1024];
+	uint8_t   data[1500];
 } uart_payload_t;
 
 // -----------------------------------------------------------------------------------------

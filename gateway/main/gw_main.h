@@ -38,6 +38,8 @@ device_info_block_t dib;
 //Prioritäten und Slots (synchron in allen Nodes (incl gw))
 node_info_block_t nib;
 
+void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid);
 void broadcast_nib(node_info_block_t* pnib);
+device_info_t* get_device_info(dev_uid_t uid);
 
 #endif /* MAIN_GW_MAIN_H_ */

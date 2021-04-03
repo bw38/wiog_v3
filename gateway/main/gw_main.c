@@ -40,8 +40,9 @@ static xQueueHandle wiog_tx_queue;
 
 SemaphoreHandle_t return_timeout_Semaphore = NULL;
 dev_uid_t my_uid = 0;
-uint32_t ack_id = 0;		//Vergleich mit FrameID
 
+uint32_t ack_id = 0;		//Vergleich mit FrameID
+uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 
 
 uint8_t test = 0;
@@ -55,7 +56,6 @@ bool is_dbls_fid(uint32_t fid);
 //Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
 void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
 void bc_nib_immediately();
-device_info_t* get_device_info(dev_uid_t uid);
 uint32_t get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfoBlock ermitteln, ggf Default
 
 //---------------------------------------------------------------------------------------------------------------
@@ -195,6 +195,17 @@ logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 			bc_nib_immediately();
 		}// SNR Info To GW
 
+		else
+		if (pHdr->vtype == ACK_FROM_DEVICE) {
+			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
+			if ((pHdr->vtype == ACK_FROM_GW) && (pHdr->frameid == tx_fid)) {
+				//Tx-Wiederholungen stoppen
+				tx_fid = 0;
+				xSemaphoreGive(ack_timeout_Semaphore);
+		}
+
+
+
 /*
 		//Empfang eines Datenpaketes von Sensor/Actor
 		if (pHdr->vtype == DATA_TO_GW) {
@@ -307,9 +318,11 @@ void wiog_tx_processing_task(void *pvParameter) {
 		}
 
 		((wiog_header_t*) buf)->seq_ctrl = 0;
-		//max Wiederholungen bis ACK von GW oder Node
+		//max Wiederholungen bis ACK von Device oder Node
+		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
+
 			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false)); //tx_len 24 .. 1500
@@ -325,29 +338,29 @@ void wiog_tx_processing_task(void *pvParameter) {
 
 
 //Datenframe managed an Species (Sensor od. Actor) senden
-void send_data_frame(uint8_t* buf, species_t species) {
-
-	uint8_t len = buf[0];		//Längenbyte
-	uint8_t *data = &buf[1];	//Datenbereich
+void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 
 	wiog_event_txdata_t tx_frame;
-	tx_frame.wiog_hdr = wiog_get_dummy_header(species, GATEWAY);
-	tx_frame.wiog_hdr.uid = my_uid;
+	device_info_t* di = get_device_info(uid);
+	if (di == NULL) {
+		logLV("Unbekanntes Gerät - UID: : ", uid);
+		return;
+	}
+	tx_frame.wiog_hdr = wiog_get_dummy_header(di->species, GATEWAY);
+	tx_frame.wiog_hdr.uid = uid;
 	tx_frame.wiog_hdr.species = GATEWAY;
 	tx_frame.wiog_hdr.vtype = DATA_TO_DEVICE;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 
 	tx_frame.data = malloc(len);
-	memcpy(tx_frame.data, data, len);
+	memcpy(tx_frame.data, buf, len);
 	tx_frame.data_len = len;
 	tx_frame.crypt_data = true;
 	tx_frame.target_time = 0;
 
 	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
-
-	free(tx_frame.data);	//Feigabe hier korrekt ?
 }
 
 //Eintragen der Management-Daten in den Payload

@@ -338,6 +338,35 @@ print_nib();
 				//bei Kanal-Abweichung Channel-Scan veranlassen
 				if (wifi_channel != pHdr->channel) wifi_channel = 0;
 			}
+
+			//Empfang eines Datenframes vom RPi-Gateway
+			if (pHdr->vtype == DATA_TO_DEVICE) {
+				//Ack an Gateway senden
+				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+				ptx_frame->crypt_data = false,
+				ptx_frame->target_time = 0,
+				ptx_frame->data_len = 0,
+				ptx_frame->data = NULL,
+				//Header modifiziert als ACK zurücksenden
+				ptx_frame->wiog_hdr = evt.wiog_hdr;
+				ptx_frame->wiog_hdr.mac_from[5] = ACTOR;
+				ptx_frame->wiog_hdr.mac_to[5] = GATEWAY;
+				ptx_frame->wiog_hdr.vtype = ACK_FROM_DEVICE;
+				ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
+				ptx_frame->wiog_hdr.interval_ms = interval_ms ;
+
+				//ACK 2ms verzögren
+				const esp_timer_create_args_t timer_args = {
+	  	  			  .callback = &cb_tx_delay_slot,
+					  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+					  .name = "bc_act_from_device"
+				};
+
+				esp_timer_handle_t h_timer;
+				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+				ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
+
+			}
 		}
 
 

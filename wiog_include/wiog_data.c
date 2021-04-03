@@ -13,7 +13,7 @@ void add_entry(payload_t* ppl, data_entry_t* pdent ){
 }
 */
 
-void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_t val) {
+void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint8_t st, int32_t val) {
 	df_i32_t e32 = {
 		.frametype = DF_I32,
 		.datatype = type,
@@ -27,7 +27,7 @@ void add_entry_I32 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int32_
 }
 
 
-void add_entry_I64 (payload_t* pl, uint8_t type, uint8_t ix, uint32_t st, int64_t val) {
+void add_entry_I64 (payload_t* pl, uint8_t type, uint8_t ix, uint8_t st, int64_t val) {
 	df_i64_t e64 = {
 		.frametype = DF_I64,
 		.datatype = type,
