@@ -26,8 +26,8 @@
 // --------------------------------------------------------------------------------
 
 
-uint8_t wifi_channel = WORKING_CHANNEL;
-uint16_t  cnt_no_response;
+
+//uint16_t  cnt_no_response;
 
 //uint32_t actual_frame_id;
 
@@ -59,7 +59,7 @@ bool is_dbls_fid(uint32_t fid);
 void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
 void bc_nib_immediately();
 uint32_t get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfoBlock ermitteln, ggf Default
-
+uint32_t get_interval_ms(dev_uid_t uid, species_t spec);
 //---------------------------------------------------------------------------------------------------------------
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
@@ -151,11 +151,29 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
 
 			//Gerätespezifisches Interval zurückliefern
+			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
+			ptx_frame->wiog_hdr.interval_ms = ims;
+			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
+
+
+
+/*
 			device_info_t* pdev_info = get_device_info(pHdr->uid);
-			if (pdev_info != NULL)
-				ptx_frame->wiog_hdr.interval_ms = pdev_info->interval_ms ;	//interval aus DeviceInfoBlock
+			if (pdev_info != NULL) {
+				uint32_t ims = pdev_info->interval_ms;	//interval aus DeviceInfoBlock
+				//Falls Datensätze zur Auslieferung registriert sind -> Interval = 0
+				// ==> DeepSleep des Devices verzögern
+				// ==> RPi informieren -> P-Frame
+				if (pdev_info->data_len > 0) {
+					ims = 0;
+					send_uart_frame(&pHdr->uid, 2, 'P');
+				}
+				ptx_frame->wiog_hdr.interval_ms = ims;
+			}
 			else 	//Defaultwerte
 				ptx_frame->wiog_hdr.interval_ms = get_def_sleep_time_ms(pHdr->species);	//interval aus Default
+*/
+
 logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 
 /*
@@ -198,12 +216,16 @@ logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 		}// SNR Info To GW
 
 		else
+		//Ack eines Device empfangen
 		if ((pHdr->vtype == ACK_FROM_DEVICE) && (pHdr->frameid == tx_fid)) {
 			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
 			//Tx-Wiederholungen stoppen
-logLV("Ack: ", tx_fid);
 			tx_fid = 0;
 			xSemaphoreGive(ack_timeout_Semaphore);
+
+			//ggf weitere Datenauslieferung anstoßen - P-Frame
+			device_info_t* pdev_info = get_device_info(pHdr->uid);
+			if ((pdev_info != NULL) && (pdev_info->data_len > 0)) send_uart_frame(&pHdr->uid, 2, 'P');
 		}
 
 
@@ -355,7 +377,7 @@ void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 	tx_frame.wiog_hdr.vtype = DATA_TO_DEVICE;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
-
+	tx_frame.wiog_hdr.interval_ms = get_interval_ms(uid, di->species);
 	tx_frame.data = malloc(len);
 	memcpy(tx_frame.data, buf, len);
 	tx_frame.data_len = len;
@@ -375,7 +397,7 @@ void set_management_data (management_t* pMan) {
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
 	pMan->cycle = 0;
-	pMan->cnt_no_response = cnt_no_response;
+	pMan->cnt_no_response = 0; //cnt_no_response;
 	int8_t pwr;
 	esp_wifi_get_max_tx_power(&pwr);
 	pMan->cnt_entries = 0;
@@ -456,10 +478,10 @@ void app_main(void) {
     xTaskCreate(rx_uart_event_task, "rx_uart_event_task", 4096, NULL, 3, NULL);
 
 
-//	bzero(dbls, sizeof(dbls));
 
-	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-   	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );tstop(0);
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+   	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
 	ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) ); // set country for channel range [1 .. 13]
 	ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
@@ -469,8 +491,13 @@ void app_main(void) {
 
 	ESP_ERROR_CHECK( esp_wifi_start() );
 
+    wifi_channel = 0;
+    bzero(&dib, sizeof(dib));
+    send_uart_frame(NULL, 0, 'H');	//Send Hello-Frame an RPi
 
-	esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE);
+    //warten bis RPi mit WorkinChannel auf Hello-Frame geantwortet hat
+    do { vTaskDelay(50*MS); } while (wifi_channel == 0);
+    //wifi-channel mit c-Frame (UART) setzen
 	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
 	wifi_promiscuous_filter_t filter;
@@ -486,9 +513,6 @@ void app_main(void) {
 
 	my_uid = GW_UID; 	//get_uid();	//Geräte-ID berechnen
     logLV("Gateway booted - UID: ", my_uid);
-
-    bzero(&dib, sizeof(dib));
-    send_uart_frame(NULL, 0, 'H');	//Send Hello-Frame an RPi
 
     while (true) {
 
@@ -572,6 +596,16 @@ device_info_t* get_device_info(dev_uid_t uid) {
 	return NULL;
 }
 
+// DIB über im RPi bereitstehende Datenblöcke informieren
+// x != 0 ==> Daten vorhanden
+// x == 0 ==> keine Daten vorhanden
+void notice_payload(dev_uid_t uid, uint8_t x) {
+	device_info_t* pdi = get_device_info(uid);
+	pdi->data_len = x;
+}
+
+
+
 uint32_t get_def_sleep_time_ms(uint8_t species){
 	uint32_t res = 0;
 	switch (species) {
@@ -582,7 +616,16 @@ uint32_t get_def_sleep_time_ms(uint8_t species){
 	return res;
 }
 
-
+//Interval eines Device bestimmen, aus DIB
+//falls Daten zur Aussendung registriert sind -> Interval = 0
+uint32_t get_interval_ms(dev_uid_t uid, species_t spec) {
+	device_info_t* pdi = get_device_info(uid);
+	if (pdi != NULL) {
+		if (pdi->data_len > 0) return 0;
+		else return pdi->interval_ms;
+	}
+	else return get_def_sleep_time_ms(spec);
+}
 
 
 

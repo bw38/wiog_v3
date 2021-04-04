@@ -190,13 +190,36 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         						}
 
 
-        						if (cFTyp == 'a') 		//Datenframe an Device senden
-        						{
+        						else if (cFTyp == 'a') {	//Datenframe an Device senden
         							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
         							send_data_frame(pl.data, pl.data_len, uid);
-//logLV("Daten empfangen: ", uid);
-
         						} //Frametyp 'a'
+
+
+        						else if (cFTyp == 'c') {	//Wifi-Channel des Gateway setzen
+        							uint8_t ch = pl.data[0];
+        							if ((ch > 0) && (ch < 14)) {
+        								wifi_channel = ch;
+        								esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE);
+        								logLV("Working-Channel: ", wifi_channel);
+        							}
+        						} //Frametyp 'c'
+
+        						else if (cFTyp == 'p') {	//Ankündigung eines Datenframes
+        							dev_uid_t uid;
+        							memcpy(&uid, pl.data, sizeof(dev_uid_t));
+        							notice_payload(uid, 1);	//1 -> Daten für uid vorhanden
+        						}
+
+        						else if (cFTyp == 'o') {	//unregister Dataframes
+        							dev_uid_t uid;
+        							memcpy(&uid, pl.data, sizeof(dev_uid_t));
+        							notice_payload(uid, 0);	//0 -> keine Daten für uid vorhanden
+        						}
+
+
+
+
 
 /*
         						if (cFTyp == 'b') //Steuerbefehl an Actor oder Repeater senden
@@ -215,10 +238,6 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         							}
         						} //Frametyp 'b'
 
-        						if (cFTyp == 'c')	//Wifi-Channel des Gateway setzen
-        						{
-        							wifi_channel = pl.data[0];
-        						} //Frametyp 'c'
 
         						if (cFTyp == 't')  //Watchdog-Timer-Kette
         						{

@@ -59,6 +59,7 @@ static xQueueHandle wiog_rx_queue;
 static xQueueHandle wiog_tx_queue;
 
 SemaphoreHandle_t ack_timeout_Semaphore = NULL;
+SemaphoreHandle_t goto_sleep_Semaphore = NULL;
 uint32_t interval_ms;
 
 //Prototypen
@@ -140,7 +141,6 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
 		if ((pHdr->vtype == ACK_FROM_GW) && (tx_fid == pHdr->frameid)) {
-
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
 			interval_ms = pHdr->interval_ms;
 			//bei Kanal-Abweichung Channel-Scan veranlassen
@@ -148,9 +148,9 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			//Wiederholung stoppen
 			tx_fid = 0;
-			//Mainloop fortsetzen
 			xSemaphoreGive(ack_timeout_Semaphore);
-
+			//Mainloop fortsetzen
+			xSemaphoreGive(goto_sleep_Semaphore);
 		}
 
 		//Empfang eines Datenframes vom RPi-Gateway
@@ -194,7 +194,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			interval_ms = pHdr->interval_ms;	//0 => ein weiterer Datenblock folgt
 			//Mainloop fortsetzen
-			xSemaphoreGive(ack_timeout_Semaphore);
+			xSemaphoreGive(goto_sleep_Semaphore);
 		}
 
 		free(evt.data);
@@ -242,14 +242,15 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		//max Wiederholungen bis ACK von GW oder Node
 		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
-			//Abbruch ab 2.Durchlauf falls ID bestätigt wurde
-			if ((i > 0) && (ack_id == evt.wiog_hdr.frameid)) break;
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
-			((wiog_header_t*) buf)->seq_ctrl++ ;
+			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
+			//warten auf Empfang eines ACK
+			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
+				break; //ACK empfangen -> Wiederholung abbrechen
+			}
 
-			//min. Ruhezeit zw. zwei Sendungen
-			vTaskDelay(50*MS);
+			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
 		}
 
 		free(evt.data);
@@ -409,8 +410,10 @@ bool wiog_sensor_init() {
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
 	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 2048, NULL, 5, NULL);
 
-	//f. warten auf ACK vor DeepSleep
+	//warten auf ACK, Abbruch Tx-Wiederholung
 	ack_timeout_Semaphore = xSemaphoreCreateBinary();
+	//vor DeepSleep
+	goto_sleep_Semaphore = xSemaphoreCreateBinary();
 
 	esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -463,7 +466,7 @@ void app_main(void) {
 	while (true) {
 
 		//Antwort des Gateway/Node abwarten
-		if (xSemaphoreTake(ack_timeout_Semaphore, 250*MS) != pdTRUE) {
+		if (xSemaphoreTake(goto_sleep_Semaphore, 250*MS) != pdTRUE) {
 			rtc_cnt_no_response++;
 			break;
 		}

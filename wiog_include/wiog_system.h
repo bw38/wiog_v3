@@ -19,7 +19,7 @@
 
 
 #define MS 1/portTICK_PERIOD_MS	//1 Tick je 10ms
-#define WORKING_CHANNEL 3		//f. Enntwicklung, Kanal legt Raspi fest
+//#define WORKING_CHANNEL 3		//f. Enntwicklung, Kanal legt Raspi fest
 
 #define MAX_DEVICES	64			//Max n Devices lassen sich im Netzwerk verwalten (s. Meshliste)
 #define MAX_NODES	4			//Max n-1 Nodes + 1GW lassen sich verwalten

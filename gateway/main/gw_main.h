@@ -30,6 +30,9 @@
 #define LED_RT_OFF		gpio_set_level(LED_RT, 0)
 #define LED_RT_TOGGLE	gpio_set_level(LED_RT, !gpio_get_level(LED_RT))
 
+//Arbeitskanel, Vorgabe durch RPi im c-Frame
+uint8_t wifi_channel;
+
 //statisches Array mit Default- und Geräteinformationen
 //Daten werden von RPi im d-Frame bereitgestellt
 device_info_block_t dib;
@@ -41,5 +44,6 @@ node_info_block_t nib;
 void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid);
 void broadcast_nib(node_info_block_t* pnib);
 device_info_t* get_device_info(dev_uid_t uid);
+void notice_payload(dev_uid_t uid, uint8_t x);
 
 #endif /* MAIN_GW_MAIN_H_ */
