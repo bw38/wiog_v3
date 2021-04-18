@@ -79,15 +79,15 @@ void send_uart_frame(const void *pl, uint16_t szup, char cFTyp)
 // UART Zeichenempfang
 IRAM_ATTR void rx_uart_event_task(void *pvParameters)
 {
-    uint8_t data[256];
+    uint8_t data[2048];
     int fcUART = 0;
     char rx_char;
     char cFTyp = ' ';
     union int16_tt lenPL;
     uint16_t ixPL = 0;
     uart_payload_t pl; //payload zur Weiterverarbeitung
-    uint8_t ixLine = 0;
-    uint8_t line[1024];	//gesamte Zeile f. CRC-Berechnung
+    uint16_t ixLine = 0;
+    uint8_t line[2048];	//gesamte Zeile f. CRC-Berechnung
     union int16_tt crc;
 
     uart_event_t event;

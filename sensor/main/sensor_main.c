@@ -70,7 +70,9 @@ bool is_dbls_fid(uint32_t fid);
 
 __attribute__((weak)) void rx_data_handler(uint8_t* buf, uint16_t len)  {
 	//weak linkage
-	hexdump(buf, len);
+	printf("Rx DataBytes: %d\n", len);
+//	if (len>256) len = 256;
+//	hexdump(buf, len);
 }
 
 
@@ -86,14 +88,15 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 	const wifi_promiscuous_pkt_t   *ppkt = (wifi_promiscuous_pkt_t *)buff;
 	const wiog_data_frame_t  *ipkt = (wiog_data_frame_t *)ppkt->payload;
 	const wiog_header_t *pHdr =  &ipkt->header;
-
+printf("0\n");
 	//nur fehlerfreie Pakete des eigenen Netzes bearbeiten
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(pHdr->mac_net, &mac_net, sizeof(mac_addr_t)) !=0)) return;
-
+printf("1\n");
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
+printf("2\n");
 	if (pHdr->vtype == DATA_TO_GW) return; //keine Paket-Wiederholungen auswerten
-
+printf("3\n");
 	wiog_event_rxdata_t frame;
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 	memcpy(&frame.wiog_hdr, pHdr, sizeof(wiog_header_t));
@@ -113,7 +116,7 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	wiog_event_txdata_t* ptx_frame = arg;
 	if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE) {
-			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
+			ESP_LOGW("Tx-Queue: ", "Error");
 	}
 	free(ptx_frame);
 }
@@ -129,16 +132,13 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 
-//int tix = (esp_timer_get_time() - timer) / 1000;
-//printf("from: %02x | 0x%08x | SNR: %02d | T: %dms\n",
-//pHdr->mac_from[5], pHdr->frameid, pRx_ctrl->rssi - pRx_ctrl->noise_floor, tix);
-
 		// Antwort auf Channel-Scan ------------------------------------------
 		if ((rtc_wifi_channel == 0) && (pHdr->vtype == ACK_FOR_CHANNEL))
 		{
 			rtc_wifi_channel = pHdr->channel;	//Arbeitskanal wird in jedem WIOG-Header geliefert
 		}
 
+		else
 		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
 		if ((pHdr->vtype == ACK_FROM_GW) && (tx_fid == pHdr->frameid)) {
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
@@ -147,15 +147,48 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			if (rtc_wifi_channel != pHdr->channel) rtc_wifi_channel = 0;
 
 			//Wiederholung stoppen
-			tx_fid = 0;
+//			tx_fid = 0;
 			xSemaphoreGive(ack_timeout_Semaphore);
 			//Mainloop fortsetzen
 			xSemaphoreGive(goto_sleep_Semaphore);
+
+			//0ms-Interval -> Datenpaket von GW anfordern
+			if (interval_ms == 0) {
+				//REQ an Gateway senden
+				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+				ptx_frame->crypt_data = false,
+				ptx_frame->target_time = 0,
+				ptx_frame->data_len = 0,
+				ptx_frame->data = NULL,
+				//Header modifiziert als REQ zurücksenden
+				ptx_frame->wiog_hdr = evt.wiog_hdr;
+				ptx_frame->wiog_hdr.mac_from[5] = SENSOR;
+				ptx_frame->wiog_hdr.mac_to[5] = GATEWAY;
+				ptx_frame->wiog_hdr.vtype = REQ_FROM_DEVICE;
+				ptx_frame->tx_max_repeat = 5;
+				ptx_frame->wiog_hdr.interval_ms = 0; // ??? interval_ms ;
+
+				//ACK 2ms verzögren
+				const esp_timer_create_args_t timer_args = {
+					.callback = &cb_tx_delay_slot,
+					.arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+					.name = "req_from_device"
+				};
+				esp_timer_handle_t h_timer;
+				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+				ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
+			}
 		}
 
+		else
 		//Empfang eines Datenframes vom RPi-Gateway
 		if (pHdr->vtype == DATA_TO_DEVICE) {
-			//Ack an Gateway senden
+
+			//REQ-Wiederholung stoppen
+//			tx_fid = 0;
+			xSemaphoreGive(ack_timeout_Semaphore);
+printf("XXXXX\n");
+			//ACK an Gateway senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 			ptx_frame->crypt_data = false,
 			ptx_frame->target_time = 0,
@@ -171,9 +204,9 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
-  	  			  .callback = &cb_tx_delay_slot,
-				  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
-				  .name = "bc_act_from_device"
+				.callback = &cb_tx_delay_slot,
+				.arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+				.name = "ack_from_device"
 			};
 			esp_timer_handle_t h_timer;
 			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
@@ -193,6 +226,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			}
 
 			interval_ms = pHdr->interval_ms;	//0 => ein weiterer Datenblock folgt
+
 			//Mainloop fortsetzen
 			xSemaphoreGive(goto_sleep_Semaphore);
 		}
@@ -238,6 +272,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
+		//Semaphore resetten
+		xSemaphoreTake(ack_timeout_Semaphore, 0);
 		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
 		tx_fid = evt.wiog_hdr.frameid;
@@ -404,7 +440,7 @@ bool wiog_sensor_init() {
 
 	//Rx-Queue -> Low_Prio Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
-	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 2048, NULL, 12, NULL);
+	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 12, NULL);
 
 	//Tx-Queue - Unterprogramme stellen zu sendende Daten in die Queue
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
@@ -466,8 +502,9 @@ void app_main(void) {
 	while (true) {
 
 		//Antwort des Gateway/Node abwarten
-		if (xSemaphoreTake(goto_sleep_Semaphore, 250*MS) != pdTRUE) {
+		if (xSemaphoreTake(goto_sleep_Semaphore, 500*MS) != pdTRUE) {
 			rtc_cnt_no_response++;
+printf("BREAK !\n");
 			break;
 		}
 
@@ -481,12 +518,12 @@ void app_main(void) {
 	else if (interval_ms > SENSOR_MAX_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MAX_SLEEP_TIME_MS;
 	else rtc_interval_ms = interval_ms;
 
-	rtc_onTime += esp_timer_get_time() / 1000;
+printf("Goto DeepSleep for %dms\n", rtc_interval_ms);
 
+	rtc_onTime += esp_timer_get_time() / 1000;
 	esp_sleep_enable_timer_wakeup(rtc_interval_ms * 1000);
     rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
     esp_deep_sleep_disable_rom_logging();
-    printf("Goto DeepSleep for %dms\n", rtc_interval_ms);
 	esp_deep_sleep_start();
 
 }

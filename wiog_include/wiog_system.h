@@ -19,7 +19,6 @@
 
 
 #define MS 1/portTICK_PERIOD_MS	//1 Tick je 10ms
-//#define WORKING_CHANNEL 3		//f. Enntwicklung, Kanal legt Raspi fest
 
 #define MAX_DEVICES	64			//Max n Devices lassen sich im Netzwerk verwalten (s. Meshliste)
 #define MAX_NODES	4			//Max n-1 Nodes + 1GW lassen sich verwalten
@@ -118,6 +117,7 @@ typedef enum {
     RETURN_FROM_GW,
 	DATA_TO_DEVICE,		//Daten von RPi-GW via UART an Device senden
 	ACK_FROM_DEVICE,	//Empfangsbestätigung des Devices
+	REQ_FROM_DEVICE,	//Datenanforderung eines Device
 	RETURN_FROM_ACTOR,
 	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
 	BC_NIB,				//Boradcast Node Info Block

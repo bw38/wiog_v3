@@ -136,7 +136,6 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		else
 		//Datenpaket von Device auswerten
 		if  ((pHdr->vtype == DATA_TO_GW)) {  // &&(pHdr->mac_from[5] == 4)) {  //!!!!!!!!!!!!!!!!!!! //]&&(!is_dbls_fid(evt.wiog_hdr.frameid))) {
-
 			//Ack an Device senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 			ptx_frame->crypt_data = false,
@@ -148,13 +147,9 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			ptx_frame->wiog_hdr.mac_from[5] = GATEWAY;
 			ptx_frame->wiog_hdr.mac_to[5] = evt.wiog_hdr.species;
 			ptx_frame->wiog_hdr.vtype = ACK_FROM_GW;
-			ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
-
-			//Gerätespezifisches Interval zurückliefern
-			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
-			ptx_frame->wiog_hdr.interval_ms = ims;
-			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
-
+			ptx_frame->tx_max_repeat = 0;
+			//Gerätespezifisches Interval zurückliefern ggf 0 falls Daten bereitstehen
+			ptx_frame->wiog_hdr.interval_ms = get_interval_ms(pHdr->uid, pHdr->species);
 
 
 /*
@@ -174,7 +169,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				ptx_frame->wiog_hdr.interval_ms = get_def_sleep_time_ms(pHdr->species);	//interval aus Default
 */
 
-logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
+//logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 
 /*
 			if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
@@ -205,7 +200,7 @@ logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 					send_uart_frame(buf, evt.data_len, 'A');
 				else logE("Dercrpt Error");
 			}
-		}	//repeat Data To GW ------------------------------------------
+		}	// Data To GW ------------------------------------------
 
 		else
 		//Sofortmeldung eines Node - SNR nach Channelscan	-> Q-Frame an RPi
@@ -222,12 +217,17 @@ logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
 			//Tx-Wiederholungen stoppen
 			tx_fid = 0;
 			xSemaphoreGive(ack_timeout_Semaphore);
-
-			//ggf weitere Datenauslieferung anstoßen - P-Frame
-			device_info_t* pdev_info = get_device_info(pHdr->uid);
-			if ((pdev_info != NULL) && (pdev_info->data_len > 0)) send_uart_frame(&pHdr->uid, 2, 'P');
+			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
+			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
 		}
 
+		else
+		//Ack eines Device empfangen
+		if (pHdr->vtype == REQ_FROM_DEVICE) {
+			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
+			//P-Frame - Anforderung des nächsten registrierten Datenpaketes
+			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
+		}
 
 
 /*
@@ -341,6 +341,8 @@ void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
 		}
 
+		//Semaphore resetten
+		xSemaphoreTake(ack_timeout_Semaphore, 0);
 		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von Device oder Node
 		tx_fid = evt.wiog_hdr.frameid;
@@ -475,7 +477,7 @@ void app_main(void) {
     //UART initialisieren
 	uart0_init();
     //Create a task to handler UART event from ISR
-    xTaskCreate(rx_uart_event_task, "rx_uart_event_task", 4096, NULL, 3, NULL);
+    xTaskCreate(rx_uart_event_task, "rx_uart_event_task", 8192, NULL, 3, NULL);
 
 
 
