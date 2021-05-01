@@ -45,7 +45,7 @@ uint32_t actual_frame_id; //ID (Random) des Tx-Paketes -> f. warten auf Antwort-
 uint32_t acked_frame_id;
 
 species_t species = ACTOR;
-uint8_t slot = MAX_SLOTS;
+uint8_t slot = MAX_SLOTS - 1;	//Aktualisierung Empfang eines NIB
 
 //SemaphoreHandle_t semph_wfa = NULL;	//Wait for ACK
 
@@ -138,13 +138,41 @@ void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	wiog_event_txdata_t* ptx_frame = arg;
 	//ACK wurde für diese FID bereits empfangen -> Daten nicht wiederholen
 	bool b1 = ((ptx_frame->wiog_hdr.vtype == DATA_TO_GW) || (ptx_frame->wiog_hdr.vtype == DATA_TO_DEVICE))
-			&& (acked_fid == ptx_frame->wiog_hdr.frameid);
+			&& ((acked_fid == ptx_frame->wiog_hdr.frameid) || (acked_fid == 0));
 
 	if (!b1)
 		if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
 			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 
 	free(ptx_frame);
+}
+
+void repeat_frame(wiog_event_rxdata_t evt) {
+	//nur Nodes mit Prio 0 & 1 des jeweiligen Device verwenden
+	if (nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid ) > 1) return;
+	//Daten wieder in die Queue stellen
+	wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+	uint8_t* data = malloc(evt.data_len);
+	memcpy(data, evt.data, evt.data_len);
+	ptx_frame->wiog_hdr = evt.wiog_hdr;
+	ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
+	ptx_frame->target_time = 0;		//obsolete
+	ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
+	ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
+	ptx_frame->wiog_hdr.tagB = evt.wiog_hdr.seq_ctrl; //info
+	ptx_frame->data_len = evt.data_len;
+	ptx_frame->data = data;
+	ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
+
+	//über HiRes-Timer in die Queue stellen
+	const esp_timer_create_args_t timer_args = {
+		  .callback = &cb_tx_delay_slot,
+	  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
+	  .name = "repeat data"
+	};
+	esp_timer_handle_t h_timer;
+	ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+	ESP_ERROR_CHECK(esp_timer_start_once(h_timer, (slot+1) * SLOT_TIME_US));
 }
 
 
@@ -223,9 +251,9 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 				  .name = "scan_snr_info"
 			};
 
-			esp_timer_handle_t h_timer2;
-			ESP_ERROR_CHECK(esp_timer_create(&timer_args2, &h_timer2));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, 5000 + slot * 5000));  //slot(0) => 5ms / slot(1) => 10ms ...
+			esp_timer_handle_t h_timer;
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args2, &h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, (slot+1) * SLOT_TIME_US));  //slot(0) => 5ms / slot(1) => 10ms ...
 		}	// Ende Kanalanfrage ----------------------------------------------------------------
 
 		else
@@ -256,6 +284,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 						if (pnib->ts > nib.ts){ //Aktualitätsprüfung
 							bzero(&nib, sizeof(node_info_block_t));
 							memcpy(&nib, pnib, evt.data_len);
+							//zentrale Slot-Aktualisierung
 							slot = get_node_slot(&nib, my_uid);
 printf("UID: %d >> Slot: %d\n", evt.wiog_hdr.uid, slot);
 print_nib();
@@ -266,131 +295,43 @@ print_nib();
 		}	//if BC_NIB
 
 		else
-		//DataFrame Sensor/Actor/Node ==> GW
-		//SNR zwischenspeichern (Rx-Quality am Node)
-		//Prüfen, ob Node Prio zur Weiterleitung hat (NIB)
-		//Node-Hopping verhindern
-		if ((pHdr->vtype == DATA_TO_GW) && (species == REPEATER) && (pHdr->mac_from[5] != REPEATER)) {
-			snr_buf[ix_snr_buf].dev_uid = evt.wiog_hdr.uid;
-			snr_buf[ix_snr_buf].snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
-			ix_snr_buf++;
-			if (ix_snr_buf == MAX_SNR_BUF_ENTRIES){
-				ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
-				ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
+
+		//Repeater - Daten - Funktionen ---------------------------------------
+		//Repeater - Hoppinh unterbinden
+		//keine Pakete an eigene UID repeaten
+		//nur mit gültigem Slot-Eintrag
+		if	((species == REPEATER) && (slot < MAX_SLOTS) && (pHdr->mac_from[5] != REPEATER) && (pHdr->uid != my_uid )) {
+			//DataFrame Sensor/Actor/Node ==> GW
+			//SNR zwischenspeichern (Rx-Quality am Node)
+			if (pHdr->vtype == DATA_TO_GW) {
+				snr_buf[ix_snr_buf].dev_uid = evt.wiog_hdr.uid;
+				snr_buf[ix_snr_buf].snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
+				ix_snr_buf++;
+				if (ix_snr_buf == MAX_SNR_BUF_ENTRIES){
+					ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
+					ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
+				}
+				repeat_frame(evt);
 			}
-			//Daten wieder in die Queue stellen
-			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
-			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
-			uint8_t* data = malloc(evt.data_len);
-			memcpy(data, evt.data, evt.data_len);
-			ptx_frame->wiog_hdr = evt.wiog_hdr;
-			ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
-			ptx_frame->target_time = 0;		//obsolete
-			ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
-			ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
-			ptx_frame->wiog_hdr.tagB = evt.wiog_hdr.seq_ctrl; //info
-			ptx_frame->data_len = evt.data_len;
-			ptx_frame->data = data;
-			ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
 
-			//über HiRes-Timer in die Queue stellen
-			const esp_timer_create_args_t timer_args = {
-	  	  		  .callback = &cb_tx_delay_slot,
-				  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
-				  .name = "data to gw"
-			};
-			esp_timer_handle_t h_timer;
-			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 5000 + ix * 5000));
-		}
-
-		else
-		//ACK des GW durch Nodes mit Prio 0+1 broadcasten
-		if ((pHdr->vtype == ACK_FROM_GW) && (species == REPEATER) && (pHdr->uid != my_uid ) && (pHdr->mac_from[5] == GATEWAY)) {
-			acked_fid = pHdr->frameid;
-			//Daten wieder in die Queue stellen
-			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
-			if (( ix >= 0 ) && (ix < 2)) {
-				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
-				ptx_frame->wiog_hdr = evt.wiog_hdr;
-				ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
-				ptx_frame->target_time = 0;		//obsolete
-				ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
-				ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
-				ptx_frame->data_len = 0;			//Ack-Frame hat keine Daten
-				ptx_frame->data = NULL;
-				ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
-				//In Slot senden
-				const esp_timer_create_args_t timer_args = {
-	  	  			  .callback = &cb_tx_delay_slot,
-					  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
-					  .name = "bc_act_from_gw"
-				};
-
-				esp_timer_handle_t h_timer3;
-				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer3));	//Create HiRes-Timer
-				ESP_ERROR_CHECK(esp_timer_start_once(h_timer3, (slot+1) * SLOT_TIME_US)); 	// Start the timer
+			else
+			// Daten von GW an Device repeaten
+			if ((pHdr->vtype == REQ_FROM_DEVICE)) {
+				repeat_frame(evt);
 			}
-		}
-
-		else
-		// Daten von GW an Device repeaten, wenn nicht my_uid, Node-Hopping unterbinden
-		if ((pHdr->vtype == DATA_TO_DEVICE) && (species == REPEATER) && (pHdr->uid != my_uid) && (pHdr->mac_from[5] != REPEATER)) {
-			//Daten wieder in die Queue stellen
-			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
-			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
-			uint8_t* data = malloc(evt.data_len);
-			memcpy(data, evt.data, evt.data_len);
-			ptx_frame->wiog_hdr = evt.wiog_hdr;
-			ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
-			ptx_frame->target_time = 0;		//obsolete
-			ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
-			ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
-			ptx_frame->wiog_hdr.tagB = evt.wiog_hdr.seq_ctrl; //info
-			ptx_frame->data_len = evt.data_len;
-			ptx_frame->data = data;
-			ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
-
-			//über HiRes-Timer in die Queue stellen
-			const esp_timer_create_args_t timer_args = {
-	  	  		  .callback = &cb_tx_delay_slot,
-				  .arg = (void*) ptx_frame,  // argument will be passed to cb-function
-				  .name = "data to device"
-			};
-			esp_timer_handle_t h_timer;
-			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 5000 + ix * 5000));
-		}
-
-
-		else
-		//ACK eines Devices (Sensor od Actor) durch Nodes mit Prio 0+1 broadcasten
-		if ((pHdr->vtype == ACK_FROM_DEVICE) && (species == REPEATER) && ((pHdr->mac_from[5] == SENSOR ) || (pHdr->mac_from[5] == ACTOR ))) {
-			acked_fid = pHdr->frameid;
-			//Daten wieder in die Queue stellen
-			int ix = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
-			if (( ix >= 0 ) && (ix < 2)) {
-				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
-				ptx_frame->wiog_hdr = evt.wiog_hdr;
-				ptx_frame->crypt_data = false;	//Verschlüsselung nicht ändern
-				ptx_frame->target_time = 0;		//obsolete
-				ptx_frame->tx_max_repeat = 0;		//keine Wiederholung repeateter Frames
-				ptx_frame->wiog_hdr.tagC = my_uid;	//info zur freien Verwendung
-				ptx_frame->data_len = 0;			//Ack-Frame hat keine Daten
-				ptx_frame->data = NULL;
-				ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
-				//In Slot senden
-				const esp_timer_create_args_t timer_args = {
-	  	  			  .callback = &cb_tx_delay_slot,
-					  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
-					  .name = "bc_act_from_device"
-				};
-
-				esp_timer_handle_t h_timer3;
-				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer3));	//Create HiRes-Timer
-				ESP_ERROR_CHECK(esp_timer_start_once(h_timer3, (slot+1) * SLOT_TIME_US)); 	// Start the timer
+			else
+			if (pHdr->vtype == DATA_TO_DEVICE) {
+				acked_fid = 0;
+				repeat_frame(evt);
 			}
-		}
+			else
+			//ACK broadcasten
+			if ((pHdr->vtype == ACK_FROM_GW) || (pHdr->vtype == ACK_FROM_DEVICE)) {
+				acked_fid = pHdr->frameid;
+				repeat_frame(evt);
+			}
+		}	//Ende Repeaterfunktionen -----------------------------------
+
 
 		else
 		//Frame an eigene UID adressiert
@@ -600,6 +541,7 @@ print_nib();
 //printf("RepToDev: 0x%08x\n", tx_frame.wiog_hdr.frameid);
 		}
 */
+
 		free(evt.data);
 	}	//while
 }
@@ -845,7 +787,7 @@ void app_main(void) {
     wifi_channel = 0;
 
     species = REPEATER;				//testweise als Repeater initialisieren !!!!!!!!!!!!!!!!!
-    slot = 1;						//legt später der GW fest
+
 
     interval_ms = ACTOR_DEF_SLEEP_TIME_MS;
 

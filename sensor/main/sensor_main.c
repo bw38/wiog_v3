@@ -88,26 +88,25 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 	const wifi_promiscuous_pkt_t   *ppkt = (wifi_promiscuous_pkt_t *)buff;
 	const wiog_data_frame_t  *ipkt = (wiog_data_frame_t *)ppkt->payload;
 	const wiog_header_t *pHdr =  &ipkt->header;
-printf("0\n");
+
 	//nur fehlerfreie Pakete des eigenen Netzes bearbeiten
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(pHdr->mac_net, &mac_net, sizeof(mac_addr_t)) !=0)) return;
-printf("1\n");
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
-printf("2\n");
-	if (pHdr->vtype == DATA_TO_GW) return; //keine Paket-Wiederholungen auswerten
-printf("3\n");
-	wiog_event_rxdata_t frame;
-	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
-	memcpy(&frame.wiog_hdr, pHdr, sizeof(wiog_header_t));
-	frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //ohne FCS
-	frame.data = (uint8_t*)malloc(frame.data_len);
-	memcpy(frame.data, &ipkt->data, frame.data_len);
+	//Pakettypen filtern
+	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK_FROM_GW) || (pHdr->vtype == DATA_TO_DEVICE)) {
+		wiog_event_rxdata_t frame;
+		memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
+		memcpy(&frame.wiog_hdr, pHdr, sizeof(wiog_header_t));
+		frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //ohne FCS
+		frame.data = (uint8_t*)malloc(frame.data_len);
+		memcpy(frame.data, &ipkt->data, frame.data_len);
 
-	//Event in die Rx-Queue stellen
-	if (xQueueSend(wiog_rx_queue, &frame, portMAX_DELAY) != pdTRUE) {
+		//Event in die Rx-Queue stellen
+		if (xQueueSend(wiog_rx_queue, &frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("Rx_Quue", "receive queue fail");
 			free(frame.data);
+		}
 	}
 }
 
@@ -118,7 +117,9 @@ void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("Tx-Queue: ", "Error");
 	}
+uint32_t fid2 = ptx_frame->wiog_hdr.frameid;
 	free(ptx_frame);
+printf("B%04x\n", fid2);
 }
 
 
@@ -185,11 +186,12 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		if (pHdr->vtype == DATA_TO_DEVICE) {
 
 			//REQ-Wiederholung stoppen
-//			tx_fid = 0;
+			tx_fid = 0;
 			xSemaphoreGive(ack_timeout_Semaphore);
-printf("XXXXX\n");
+
 			//ACK an Gateway senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+bzero(ptx_frame, sizeof(wiog_event_txdata_t));
 			ptx_frame->crypt_data = false,
 			ptx_frame->target_time = 0,
 			ptx_frame->data_len = 0,
@@ -201,7 +203,9 @@ printf("XXXXX\n");
 			ptx_frame->wiog_hdr.vtype = ACK_FROM_DEVICE;
 			ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
 			ptx_frame->wiog_hdr.interval_ms = 0; // ??? interval_ms ;
-
+			uint32_t fid2 = ptx_frame->wiog_hdr.frameid;
+printf("A%04x\n", fid2);
+//hexdump(ptx_frame, 64);
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
 				.callback = &cb_tx_delay_slot,
@@ -227,7 +231,13 @@ printf("XXXXX\n");
 
 			interval_ms = pHdr->interval_ms;	//0 => ein weiterer Datenblock folgt
 
+			//warten bis ACK from Dev gesendet wurde
+//			for (int i=0; i<5; i++) {
+				vTaskDelay(50 * MS);
+//				if (fid2 == tx_fid) break;
+//			}
 			//Mainloop fortsetzen
+
 			xSemaphoreGive(goto_sleep_Semaphore);
 		}
 
@@ -280,6 +290,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+printf("Tx-Seq; %d\n", ((wiog_header_t*) buf)->seq_ctrl);
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
 			//warten auf Empfang eines ACK
 			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {

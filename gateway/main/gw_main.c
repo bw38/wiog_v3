@@ -46,7 +46,7 @@ dev_uid_t my_uid = 0;
 uint32_t ack_id = 0;		//Vergleich mit FrameID
 uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 
-
+int64_t ts_ack = 0;
 uint8_t test = 0;
 
 // Prototypen
@@ -211,8 +211,10 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		}// SNR Info To GW
 
 		else
-		//Ack eines Device empfangen
+		//ACK eines Device empfangen
 		if ((pHdr->vtype == ACK_FROM_DEVICE) && (pHdr->frameid == tx_fid)) {
+			//Timestamp für Tx-Delay
+			ts_ack = esp_timer_get_time();
 			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
 			//Tx-Wiederholungen stoppen
 			tx_fid = 0;
@@ -222,8 +224,10 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		}
 
 		else
-		//Ack eines Device empfangen
+		//Anforderung eines Datenpaketes
 		if (pHdr->vtype == REQ_FROM_DEVICE) {
+			//Timestamp für Tx-Delay
+			ts_ack = esp_timer_get_time();
 			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
 			//P-Frame - Anforderung des nächsten registrierten Datenpaketes
 			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
@@ -366,28 +370,43 @@ void wiog_tx_processing_task(void *pvParameter) {
 
 //Datenframe managed an Species (Sensor od. Actor) senden
 void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
-
-	wiog_event_txdata_t tx_frame;
+//	wiog_event_txdata_t tx_frame;
 	device_info_t* di = get_device_info(uid);
 	if (di == NULL) {
 		logLV("Unbekanntes Gerät - UID: : ", uid);
 		return;
 	}
-	tx_frame.wiog_hdr = wiog_get_dummy_header(di->species, GATEWAY);
-	tx_frame.wiog_hdr.uid = uid;
-	tx_frame.wiog_hdr.species = GATEWAY;
-	tx_frame.wiog_hdr.vtype = DATA_TO_DEVICE;
-	tx_frame.wiog_hdr.frameid = esp_random();
-	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
-	tx_frame.wiog_hdr.interval_ms = get_interval_ms(uid, di->species);
-	tx_frame.data = malloc(len);
-	memcpy(tx_frame.data, buf, len);
-	tx_frame.data_len = len;
-	tx_frame.crypt_data = true;
-	tx_frame.target_time = 0;
+	wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
+	ptx_frame->wiog_hdr = wiog_get_dummy_header(di->species, GATEWAY);
+	ptx_frame->wiog_hdr.uid = uid;
+	ptx_frame->wiog_hdr.species = GATEWAY;
+	ptx_frame->wiog_hdr.vtype = DATA_TO_DEVICE;
+	ptx_frame->wiog_hdr.frameid = esp_random();
+	ptx_frame->tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
+	ptx_frame->wiog_hdr.interval_ms = get_interval_ms(uid, di->species);
+	ptx_frame->data = malloc(len);
+	memcpy(ptx_frame->data, buf, len);
+	ptx_frame->data_len = len;
+	ptx_frame->crypt_data = true;
+	ptx_frame->target_time = 0;
 
-	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
-		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
+	uint32_t dts = esp_timer_get_time() - ts_ack;
+	if (dts > 20000) {
+		//Datenpaket sofort in die Queue stellen
+		if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
+			ESP_LOGW("Tx-Queue: ", "Tx Data fail");
+		free(ptx_frame);
+	} else {
+		//Antwort auf P-Frame -> Datenpaket verzögren
+		const esp_timer_create_args_t timer_args = {
+	  			  .callback = &cb_tx_delay_slot,
+			  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
+			  .name = "data_from_gw"
+		};
+		esp_timer_handle_t h_timer;
+		ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
+		ESP_ERROR_CHECK(esp_timer_start_once(h_timer, dts)); 	// Start the timer
+	}
 }
 
 //Eintragen der Management-Daten in den Payload

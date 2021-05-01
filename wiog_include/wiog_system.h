@@ -114,11 +114,9 @@ typedef enum {
 	ACK_FOR_CHANNEL,	//Repeater und GW antworten auf Kanalsuche
 	DATA_TO_GW,			//DataFrame Device an Gateway
 	ACK_FROM_GW,		//Empfangsbestätigung des GW
-    RETURN_FROM_GW,
 	DATA_TO_DEVICE,		//Daten von RPi-GW via UART an Device senden
 	ACK_FROM_DEVICE,	//Empfangsbestätigung des Devices
 	REQ_FROM_DEVICE,	//Datenanforderung eines Device
-	RETURN_FROM_ACTOR,
 	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
 	BC_NIB,				//Boradcast Node Info Block
 } vtype_t;
