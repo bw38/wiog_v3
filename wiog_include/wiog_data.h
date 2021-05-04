@@ -84,10 +84,9 @@ typedef struct __attribute__((packed)) {
 	uint8_t  rssi;
 	uint8_t  tx_pwr;
 	uint32_t cycle;
-	uint32_t interval;
-	uint64_t localtime;
-	uint16_t cnt_no_response;
-	uint8_t  cnt_entries;	//Anzahl der Datensätze
+	uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
+	uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
+	uint8_t  cnt_entries;		//Anzahl der Datensätze
 	uint8_t  res8A;
 } management_t;
 
@@ -165,8 +164,8 @@ typedef struct __attribute__((packed)) {
 	dev_uid_t uid;
 	uint8_t  species;
 	uint32_t interval_ms;
-	uint32_t data_len;
-	uint8_t* data;
+//	uint32_t data_len;
+//	uint8_t* data;
 } device_info_t;
 
 //Datenstruktur wird im RPi - TDeviceInfoBlock.Data2Buffer() zusammengestellt

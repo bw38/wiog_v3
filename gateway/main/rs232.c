@@ -192,7 +192,12 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
 
         						else if (cFTyp == 'a') {	//Datenframe an Device senden
         							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
-        							send_data_frame(pl.data, pl.data_len, uid);
+        							if (get_device_info(uid)->species == SENSOR) {
+        								logLV("Error: Data to Sensor", uid);
+        							} else {
+        								//Actor: Datensatz sofort senden
+        								send_data_frame(pl.data, pl.data_len, uid);
+        							}
         						} //Frametyp 'a'
 
 
@@ -204,7 +209,7 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         								logLV("Working-Channel: ", wifi_channel);
         							}
         						} //Frametyp 'c'
-
+/*
         						else if (cFTyp == 'p') {	//Ankündigung eines Datenframes
         							dev_uid_t uid;
         							memcpy(&uid, pl.data, sizeof(dev_uid_t));
@@ -216,37 +221,7 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         							memcpy(&uid, pl.data, sizeof(dev_uid_t));
         							notice_payload(uid, 0);	//0 -> keine Daten für uid vorhanden
         						}
-
-
-
-
-
-/*
-        						if (cFTyp == 'b') //Steuerbefehl an Actor oder Repeater senden
-        						{
-        							LED_RT_ON;
-        							pl.wifi_channel = get_wifi_channel(); //tatsächlichen Arbeitskanal
-        							switch (pl.species) {
-        								case SPECIES_ACTOR:
-        									esp_now_send(mac_actor, pl.data, lenPL);
-        									if (repeater_is_present > 0 )
-        										esp_now_send(mac_repeater, pl.data, lenPL);
-        									break;
-        								case SPECIES_REPEATER:
-        									esp_now_send(mac_repeater, pl.data, lenPL);
-        									break;
-        							}
-        						} //Frametyp 'b'
-
-
-        						if (cFTyp == 't')  //Watchdog-Timer-Kette
-        						{
-        							xTaskCreate(wd_uart_event_task, "wd_uart_event_task", 1024, NULL, 12, NULL);
-        							wd_timeout_min = 3;	//SW-Reset nach 3min ohne WD-Feed
-        						} //Frametyp 't'
-
 */
-
         					} else {
         						logE("Datenfehler (UART) RPi -> ESP");
         					}

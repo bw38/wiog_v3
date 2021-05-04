@@ -137,7 +137,7 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	wiog_event_txdata_t* ptx_frame = arg;
 	//ACK wurde für diese FID bereits empfangen -> Daten nicht wiederholen
-	bool b1 = ((ptx_frame->wiog_hdr.vtype == DATA_TO_GW) || (ptx_frame->wiog_hdr.vtype == DATA_TO_DEVICE))
+	bool b1 = (ptx_frame->wiog_hdr.vtype == DATA)
 			&& ((acked_fid == ptx_frame->wiog_hdr.frameid) || (acked_fid == 0));
 
 	if (!b1)
@@ -297,36 +297,28 @@ print_nib();
 		else
 
 		//Repeater - Daten - Funktionen ---------------------------------------
-		//Repeater - Hoppinh unterbinden
+		//Repeater - Hopping unterbinden
 		//keine Pakete an eigene UID repeaten
 		//nur mit gültigem Slot-Eintrag
 		if	((species == REPEATER) && (slot < MAX_SLOTS) && (pHdr->mac_from[5] != REPEATER) && (pHdr->uid != my_uid )) {
 			//DataFrame Sensor/Actor/Node ==> GW
 			//SNR zwischenspeichern (Rx-Quality am Node)
-			if (pHdr->vtype == DATA_TO_GW) {
-				snr_buf[ix_snr_buf].dev_uid = evt.wiog_hdr.uid;
-				snr_buf[ix_snr_buf].snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
-				ix_snr_buf++;
-				if (ix_snr_buf == MAX_SNR_BUF_ENTRIES){
-					ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
-					ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
+			if (pHdr->vtype == DATA) {
+				if (pHdr->mac_from[5] != GATEWAY) { //SNR v.Actor/Sensor
+					snr_buf[ix_snr_buf].dev_uid = evt.wiog_hdr.uid;
+					snr_buf[ix_snr_buf].snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
+					ix_snr_buf++;
+					if (ix_snr_buf == MAX_SNR_BUF_ENTRIES){
+						ix_snr_buf = 0; 	//Überlauf verhindern -> überschreiben
+						ov_snr_buf = true;	//Overflow-Flag setzen -> kompletten Puffer verarbeiten
+					}
 				}
 				repeat_frame(evt);
 			}
 
 			else
-			// Daten von GW an Device repeaten
-			if ((pHdr->vtype == REQ_FROM_DEVICE)) {
-				repeat_frame(evt);
-			}
-			else
-			if (pHdr->vtype == DATA_TO_DEVICE) {
-				acked_fid = 0;
-				repeat_frame(evt);
-			}
-			else
 			//ACK broadcasten
-			if ((pHdr->vtype == ACK_FROM_GW) || (pHdr->vtype == ACK_FROM_DEVICE)) {
+			if (pHdr->vtype == ACK)  {
 				acked_fid = pHdr->frameid;
 				repeat_frame(evt);
 			}
@@ -338,7 +330,7 @@ print_nib();
 		if (pHdr->uid == my_uid ) {
 
 			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
-			if ((pHdr->vtype == ACK_FROM_GW) && (pHdr->frameid == tx_fid)) {
+			if ((pHdr->vtype == ACK) && (pHdr->frameid == tx_fid)) {
 				//Tx-Wiederholungen stoppen
 				tx_fid = 0;
 				xSemaphoreGive(ack_timeout_Semaphore);
@@ -351,7 +343,7 @@ print_nib();
 			}
 
 			//Empfang eines Datenframes vom RPi-Gateway
-			if (pHdr->vtype == DATA_TO_DEVICE) {
+			if (pHdr->vtype == DATA) {
 				//Ack an Gateway senden
 				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 				ptx_frame->crypt_data = false,
@@ -362,7 +354,7 @@ print_nib();
 				ptx_frame->wiog_hdr = evt.wiog_hdr;
 				ptx_frame->wiog_hdr.mac_from[5] = ACTOR;
 				ptx_frame->wiog_hdr.mac_to[5] = GATEWAY;
-				ptx_frame->wiog_hdr.vtype = ACK_FROM_DEVICE;
+				ptx_frame->wiog_hdr.vtype = ACK;
 				ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
 				ptx_frame->wiog_hdr.interval_ms = interval_ms ;
 
@@ -613,7 +605,7 @@ void send_data_frame(payload_t* buf, uint16_t len, species_t spec) {
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, spec);
 	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = spec;
-	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
+	tx_frame.wiog_hdr.vtype = DATA;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 

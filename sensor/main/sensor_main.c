@@ -94,7 +94,7 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
 	//Pakettypen filtern
-	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK_FROM_GW) || (pHdr->vtype == DATA_TO_DEVICE)) {
+	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK)) {
 		wiog_event_rxdata_t frame;
 		memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 		memcpy(&frame.wiog_hdr, pHdr, sizeof(wiog_header_t));
@@ -141,7 +141,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 		else
 		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
-		if ((pHdr->vtype == ACK_FROM_GW) && (tx_fid == pHdr->frameid)) {
+		if ((pHdr->vtype == ACK) && (tx_fid == pHdr->frameid)) {
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
 			interval_ms = pHdr->interval_ms;
 			//bei Kanal-Abweichung Channel-Scan veranlassen
@@ -151,93 +151,6 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 //			tx_fid = 0;
 			xSemaphoreGive(ack_timeout_Semaphore);
 			//Mainloop fortsetzen
-			xSemaphoreGive(goto_sleep_Semaphore);
-
-			//0ms-Interval -> Datenpaket von GW anfordern
-			if (interval_ms == 0) {
-				//REQ an Gateway senden
-				wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
-				ptx_frame->crypt_data = false,
-				ptx_frame->target_time = 0,
-				ptx_frame->data_len = 0,
-				ptx_frame->data = NULL,
-				//Header modifiziert als REQ zurücksenden
-				ptx_frame->wiog_hdr = evt.wiog_hdr;
-				ptx_frame->wiog_hdr.mac_from[5] = SENSOR;
-				ptx_frame->wiog_hdr.mac_to[5] = GATEWAY;
-				ptx_frame->wiog_hdr.vtype = REQ_FROM_DEVICE;
-				ptx_frame->tx_max_repeat = 5;
-				ptx_frame->wiog_hdr.interval_ms = 0; // ??? interval_ms ;
-
-				//ACK 2ms verzögren
-				const esp_timer_create_args_t timer_args = {
-					.callback = &cb_tx_delay_slot,
-					.arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
-					.name = "req_from_device"
-				};
-				esp_timer_handle_t h_timer;
-				ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-				ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
-			}
-		}
-
-		else
-		//Empfang eines Datenframes vom RPi-Gateway
-		if (pHdr->vtype == DATA_TO_DEVICE) {
-
-			//REQ-Wiederholung stoppen
-			tx_fid = 0;
-			xSemaphoreGive(ack_timeout_Semaphore);
-
-			//ACK an Gateway senden
-			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
-bzero(ptx_frame, sizeof(wiog_event_txdata_t));
-			ptx_frame->crypt_data = false,
-			ptx_frame->target_time = 0,
-			ptx_frame->data_len = 0,
-			ptx_frame->data = NULL,
-			//Header modifiziert als ACK zurücksenden
-			ptx_frame->wiog_hdr = evt.wiog_hdr;
-			ptx_frame->wiog_hdr.mac_from[5] = SENSOR;
-			ptx_frame->wiog_hdr.mac_to[5] = GATEWAY;
-			ptx_frame->wiog_hdr.vtype = ACK_FROM_DEVICE;
-			ptx_frame->tx_max_repeat = 0;	//keine Wiederholung + kein ACK rtwartet
-			ptx_frame->wiog_hdr.interval_ms = 0; // ??? interval_ms ;
-			uint32_t fid2 = ptx_frame->wiog_hdr.frameid;
-printf("A%04x\n", fid2);
-//hexdump(ptx_frame, 64);
-			//ACK 2ms verzögren
-			const esp_timer_create_args_t timer_args = {
-				.callback = &cb_tx_delay_slot,
-				.arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
-				.name = "ack_from_device"
-			};
-			esp_timer_handle_t h_timer;
-			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
-
-			//per weak-link an Datenauswertung übergeben
-			if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
-				set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
-				//Daten via UART an RPi-GW senden	A-Frame
-				//Datenblock entschlüsseln
-				uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
-				bzero(buf, evt.data_len);
-				if (wiog_decrypt_data(evt.data, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
-					rx_data_handler(buf, evt.data_len);
-				else
-					printf("Dercrpt Error");
-			}
-
-			interval_ms = pHdr->interval_ms;	//0 => ein weiterer Datenblock folgt
-
-			//warten bis ACK from Dev gesendet wurde
-//			for (int i=0; i<5; i++) {
-				vTaskDelay(50 * MS);
-//				if (fid2 == tx_fid) break;
-//			}
-			//Mainloop fortsetzen
-
 			xSemaphoreGive(goto_sleep_Semaphore);
 		}
 
@@ -319,7 +232,7 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
 	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = species;
-	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
+	tx_frame.wiog_hdr.vtype = DATA;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.wiog_hdr.tagD = 0;
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
@@ -510,18 +423,11 @@ void app_main(void) {
 	send_data_frame(&pl, pl.ix + sizeof(pl.man));
 
 	//----------------------------------------------------------------
-	while (true) {
 
-		//Antwort des Gateway/Node abwarten
-		if (xSemaphoreTake(goto_sleep_Semaphore, 500*MS) != pdTRUE) {
-			rtc_cnt_no_response++;
-printf("BREAK !\n");
-			break;
-		}
-
-		//Interval == 0  => DataToDevice folgt
-		if (interval_ms != 0) break;
-
+	//Antwort des Gateway/Node abwarten
+	if (xSemaphoreTake(goto_sleep_Semaphore, 500*MS) != pdTRUE) {
+		rtc_cnt_no_response++;
+printf('No response: %d\n', rtc_cnt_no_response);
 	}
 
 	//Bereichsprüfung interval

@@ -135,7 +135,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 		else
 		//Datenpaket von Device auswerten
-		if  ((pHdr->vtype == DATA_TO_GW)) {  // &&(pHdr->mac_from[5] == 4)) {  //!!!!!!!!!!!!!!!!!!! //]&&(!is_dbls_fid(evt.wiog_hdr.frameid))) {
+		if  ((pHdr->vtype == DATA)) {
 			//Ack an Device senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 			ptx_frame->crypt_data = false,
@@ -146,36 +146,10 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			ptx_frame->wiog_hdr = evt.wiog_hdr;
 			ptx_frame->wiog_hdr.mac_from[5] = GATEWAY;
 			ptx_frame->wiog_hdr.mac_to[5] = evt.wiog_hdr.species;
-			ptx_frame->wiog_hdr.vtype = ACK_FROM_GW;
+			ptx_frame->wiog_hdr.vtype = ACK;
 			ptx_frame->tx_max_repeat = 0;
-			//Gerätespezifisches Interval zurückliefern ggf 0 falls Daten bereitstehen
+			//Gerätespezifisches Interval zurückliefern
 			ptx_frame->wiog_hdr.interval_ms = get_interval_ms(pHdr->uid, pHdr->species);
-
-
-/*
-			device_info_t* pdev_info = get_device_info(pHdr->uid);
-			if (pdev_info != NULL) {
-				uint32_t ims = pdev_info->interval_ms;	//interval aus DeviceInfoBlock
-				//Falls Datensätze zur Auslieferung registriert sind -> Interval = 0
-				// ==> DeepSleep des Devices verzögern
-				// ==> RPi informieren -> P-Frame
-				if (pdev_info->data_len > 0) {
-					ims = 0;
-					send_uart_frame(&pHdr->uid, 2, 'P');
-				}
-				ptx_frame->wiog_hdr.interval_ms = ims;
-			}
-			else 	//Defaultwerte
-				ptx_frame->wiog_hdr.interval_ms = get_def_sleep_time_ms(pHdr->species);	//interval aus Default
-*/
-
-//logLV("Interval: ", ptx_frame->wiog_hdr.interval_ms);
-
-/*
-			if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE)
-				ESP_LOGW("Tx-Queue: ", "Channelscan fail");
-			free(ptx_frame);
-*/
 
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
@@ -212,98 +186,14 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 		else
 		//ACK eines Device empfangen
-		if ((pHdr->vtype == ACK_FROM_DEVICE) && (pHdr->frameid == tx_fid)) {
+		if ((pHdr->vtype == ACK) && (pHdr->frameid == tx_fid)) {
 			//Timestamp für Tx-Delay
 			ts_ack = esp_timer_get_time();
 			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
 			//Tx-Wiederholungen stoppen
 			tx_fid = 0;
 			xSemaphoreGive(ack_timeout_Semaphore);
-			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
-			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
 		}
-
-		else
-		//Anforderung eines Datenpaketes
-		if (pHdr->vtype == REQ_FROM_DEVICE) {
-			//Timestamp für Tx-Delay
-			ts_ack = esp_timer_get_time();
-			uint32_t ims = get_interval_ms(pHdr->uid, pHdr->species);
-			//P-Frame - Anforderung des nächsten registrierten Datenpaketes
-			if (ims == 0) send_uart_frame(&pHdr->uid, 2, 'P');
-		}
-
-
-/*
-		//Empfang eines Datenpaketes von Sensor/Actor
-		if (pHdr->vtype == DATA_TO_GW) {
-			//prüfen, ob Frame-ID bereits bekannt ist
-			int dix = get_dbls(pHdr->frameid);
-			bool new_id = false;
-			if (dix < 0) {	//Frame zum ersten Mal empfangen
-				//neuen Eintrag in Ringpuffer anlagen
-				//Anzahl der unbearbeiteten Pakete darf nicht größer als der Ringpuffer werden
-				bzero(&dbls[dbl_ix], sizeof(double_entry_t));
-				dbls[dbl_ix].frameid = pHdr->frameid;	//Kennung des Datenpaketes
-				dbls[dbl_ix].species = pHdr->species;	//Ursprungsspezies
-				dbls[dbl_ix].uid = pHdr->uid;			//Ursprungs-UID
-				dbls[dbl_ix].txpwr = pHdr->txpwr;			//rel Tx-Power des Ursprungsdevices
-
-				dix = dbl_ix;							//f. weitere Einträge
-				dbl_ix++;								//Index f. nächstes Pakes
-				dbl_ix &= DBLS_SZ - 1;					//Index Ringpuffer
-				new_id = true;
-			}
-
-			//max SNR in Double-List eintragen
-			if (pHdr->mac_from[5] >= REPEATER){	//wiederholtes Paket?, SNR am 1. Repeater
-				if(dbls[dix].max_snr < pHdr->tagA) {
-					dbls[dix].max_snr = pHdr->tagA;	//werden im 1. Repeater der Kette gesetzt
-					dbls[dix].mac = pHdr->tagC;
-				}
-			} else { //direkter Empfang
-				int8_t snr = pRx_ctrl->rssi - pRx_ctrl->noise_floor;
-				if(dbls[dix].max_snr < snr) {
-					dbls[dix].max_snr = snr;
-					dbls[dix].mac = GATEWAY;
-				}
-			}
-
-			if (new_id) {	//Frame verarbeiten
-
-				//Datenblock entschlüsseln
-				uint8_t buf[evt.data_len];
-				bzero(buf, evt.data_len);
-
-				uint8_t key[] = {AES_KEY};	//CBC-AES-Key
-				uint32_t u32 = evt.wiog_hdr.frameid;	// Frame-ID => 4 letzten Byres im Key
-				key[28] = (uint8_t)u32;
-				key[29] = (uint8_t)(u32>>=8);
-				key[30] = (uint8_t)(u32>>=8);
-				key[31] = (uint8_t)(u32>>=8);
-
-				cbc_decrypt(evt.data, buf, evt.data_len, key, sizeof(key));
-printf("%s\n", buf);
-				uint32_t *pid = malloc(sizeof(uint32_t));
-				*pid = pHdr->frameid;
-
-				//RxQuittung senden & Verarbeitung der Rx-Daten
-				//Test - Speicherplatz am Task-Ende wieder freigeben !!!
-				xTaskCreate(rx_data_processing_task, "wiog_tx_data_task", 2048, pid, 2, NULL);
-
-			}
-		} //data_to_gw
-*/
-/*		//Empfangsbestätigung vom Actor
-		if ((pHdr->vtype == RETURN_FROM_ACTOR)&&(actual_frame_id == pHdr->frameid)) {
-			actual_frame_id++;	//verfälschen
-			//Entschlüsselung nicht erforderlich ???
-
-			//Empfang wurde bestätigt -> Tx- Widerholung abbrechen
-			xSemaphoreGive(return_timeout_Semaphore);
-		}
-*/
-
 
 		free(evt.data);
 	}	//while
@@ -368,7 +258,7 @@ void wiog_tx_processing_task(void *pvParameter) {
 
 
 
-//Datenframe managed an Species (Sensor od. Actor) senden
+//Datenframe managed an Species (Actor) senden
 void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 //	wiog_event_txdata_t tx_frame;
 	device_info_t* di = get_device_info(uid);
@@ -377,10 +267,11 @@ void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 		return;
 	}
 	wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
-	ptx_frame->wiog_hdr = wiog_get_dummy_header(di->species, GATEWAY);
+	//Datenframes gehen nur an ACTOR
+	ptx_frame->wiog_hdr = wiog_get_dummy_header(ACTOR, GATEWAY);
 	ptx_frame->wiog_hdr.uid = uid;
 	ptx_frame->wiog_hdr.species = GATEWAY;
-	ptx_frame->wiog_hdr.vtype = DATA_TO_DEVICE;
+	ptx_frame->wiog_hdr.vtype = DATA;
 	ptx_frame->wiog_hdr.frameid = esp_random();
 	ptx_frame->tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 	ptx_frame->wiog_hdr.interval_ms = get_interval_ms(uid, di->species);
@@ -617,216 +508,24 @@ device_info_t* get_device_info(dev_uid_t uid) {
 	return NULL;
 }
 
-// DIB über im RPi bereitstehende Datenblöcke informieren
-// x != 0 ==> Daten vorhanden
-// x == 0 ==> keine Daten vorhanden
-void notice_payload(dev_uid_t uid, uint8_t x) {
-	device_info_t* pdi = get_device_info(uid);
-	pdi->data_len = x;
-}
-
-
 
 uint32_t get_def_sleep_time_ms(uint8_t species){
 	uint32_t res = 0;
 	switch (species) {
-		case SENSOR: if (dib.def_sensor_interval_ms > 0) return dib.def_sensor_interval_ms; break;
-		case ACTOR:  if (dib.def_actor_interval_ms  > 0) return dib.def_actor_interval_ms;  break;
-		case REPEATER: 	 if (dib.def_node_interval_ms   > 0) return dib.def_node_interval_ms;   break;
+		case SENSOR:   	if (dib.def_sensor_interval_ms > 0) return dib.def_sensor_interval_ms; break;
+		case ACTOR:    	if (dib.def_actor_interval_ms  > 0) return dib.def_actor_interval_ms;  break;
+		case REPEATER: 	if (dib.def_node_interval_ms   > 0) return dib.def_node_interval_ms;   break;
 	}
 	return res;
 }
 
 //Interval eines Device bestimmen, aus DIB
-//falls Daten zur Aussendung registriert sind -> Interval = 0
 uint32_t get_interval_ms(dev_uid_t uid, species_t spec) {
 	device_info_t* pdi = get_device_info(uid);
-	if (pdi != NULL) {
-		if (pdi->data_len > 0) return 0;
-		else return pdi->interval_ms;
-	}
-	else return get_def_sleep_time_ms(spec);
+	if (pdi != NULL)
+		return pdi->interval_ms;
+		else return get_def_sleep_time_ms(spec);
 }
 
 
-
-// *******************************************************************************************************
-//Obsolete Funktionen / Variablen /etc
-
-/*
-// Double-List ----------------------------------------
-//nur das erste empfangene Paket  einer ID wird verarbeitet, Wiederholungen werden verworfen
-//bester Empfangspegel an Repeater / Gateway - zu Regulierung Tx-Power von Sensoren
-typedef struct {
-	uint32_t frameid;	//Frame - ID
-	uint16_t uid;
-	species_t species;
-	int8_t txpwr;
-	uint8_t max_snr; 	//bestes SNR GW oder Repeater
-	uint8_t mac;	 	//MAC5 des GW/Rep mit höchstem SNR
-} double_entry_t;
-
-#define DBLS_SZ 16
-double_entry_t dbls[DBLS_SZ];
-uint8_t dbl_ix = 0;
-//-----------------------------------------------------
-
-uint8_t slot = 0;
-
-//static void rx_data_processing_task(void *pvParameter);
-int get_dbls(uint32_t fid);
-
-*/
-
-/*
-//Double-Liste durchsuchen, ob Eintrag bereits vorhanden ist
-//Return: ix des Eintrages, -1 wenn nicht vorhanden
-int get_dbls(uint32_t fid) {
-	int res = -1;
-	for (int dix = 0; dix < DBLS_SZ; dix++ ){
-		if (dbls[dix].frameid == fid) {
-			res = dix;
-			break;
-		}
-	}
-	return res;
-}
-*/
-
-
-//---------------------------------------------------------------------------------------------------
-/*
-//Rx-Quittung senden und Weiterleitung der Daten an PiGateway
-static void rx_data_processing_task(void *pvParameter){
-	uint32_t *id = (uint32_t*)pvParameter;
-
-//	vTaskDelay(40*MS);
-	int ix = get_dbls(*id);
-	if (ix >=0) {
-		wiog_event_txdata_t tx_frame;
-		tx_frame.wiog_hdr = wiog_get_dummy_header(dbls[ix].species, GATEWAY);
-		tx_frame.wiog_hdr.frameid = *id;
-		tx_frame.wiog_hdr.uid = dbls[ix].uid;
-		tx_frame.wiog_hdr.species = dbls[ix].species;
-		tx_frame.wiog_hdr.vtype = RETURN_FROM_GW;
-		tx_frame.wiog_hdr.tagB = dbls[ix].species;
-		tx_frame.wiog_hdr.txpwr = IDEAL_SNR - dbls[ix].max_snr; //Einpegeln d. Tx-Power der Sensoren
-
-printf("FID:%08x | UID:%05d | SP:%02d | SNR:%02d | MAC:%02x | PWR:%02d\n",
-	dbls[ix].frameid, dbls[ix].uid, dbls[ix].species, dbls[ix].max_snr, dbls[ix].mac, dbls[ix].txpwr);
-
-		dbls[ix].frameid++;	//ID verfälschen, um Wiederholung zu vermeiden
-
-		tx_frame.target_time = 0;
-		tx_frame.crypt_data = true;
-
-		management_t man;
-		man.sid = SYSTEM_ID;
-		man.uid = dbls[ix].uid;
-		man.wifi_channel = 3;
-		man.cnt_entries = 0;
-		man.interval = 6000;
-
-		tx_frame.data_len = sizeof(management_t);
-		tx_frame.data = malloc(tx_frame.data_len);
-
-		memcpy(tx_frame.data, &man, tx_frame.data_len);
-
-		if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-			free(tx_frame.data);
-			ESP_LOGW("Tx-Queue: ", "Return Data fail");
-		}
-	}
-	free(id);
-	vTaskDelete(NULL);
-}
-*/
-
-
-
-
-
-// Slot - Management ---------------------------------------------------------------
-
-/*
-// Slot List ------------------------------------------
-//Verwaltung der Repeater-Slots
-typedef struct __attribute__((packed)){
-	uint16_t uid;		//UID des epeaters
-	int8_t   tout_cdwn;
-} slot_entry_t;
-
-#define SET_TOUT 10; //Startwert für CountDown-Timer
-
-#define SLOTS_SZ 8	//max Anzhal von Repeatern im Netz
-slot_entry_t slots[SLOTS_SZ];
-
-//Mutex for Critical Sections
-portMUX_TYPE slot_mutex = portMUX_INITIALIZER_UNLOCKED;
-
-void wiog_slots_init() {
-	portENTER_CRITICAL(&slot_mutex);
-	for (int i=0; i<SLOTS_SZ; i++) {
-		slots[i].uid = 0;
-		slots[i].tout_cdwn = -1;
-	}
-	portEXIT_CRITICAL(&slot_mutex);
-}
-
-//Slot eines Repeaters (uid) ermitteln
-//wenn nicht vorhanden -> neu anlegen
-//wenn Liste schon voll ist -> return -1
-int8_t wiog_get_slot(uint16_t uid) {
-	int res = -1;
-	int i;
-	for (i=0; i< SLOTS_SZ; i++) {
-		if (slots[i].uid == uid)
-			break;
-	}
-	if (i==SLOTS_SZ) { //UID in Liste nicht vorhanden
-		for (i=0; i<SLOTS_SZ; i++)
-			if (slots[i].tout_cdwn == -1) { //freier Platz ??
-				slots[i].uid = uid;
-				break;
-			}
-	}
-	if (i != SLOTS_SZ) {
-		slots[i].tout_cdwn = SET_TOUT;
-		res = i;
-	}
-	return res;
-}
-
-//Slots-Array zyklisch bereinigen
-//läuft mit Prio 0
-void wiog_manage_slots_task(void *pvParameter) {
-	wiog_slots_init();
-
-	while(true) {
-		slot_entry_t slh[SLOTS_SZ]; 	//Hilfsliste f Thread-Sicehrheit
-		portENTER_CRITICAL(&slot_mutex);
-		memcpy(slh, slots, sizeof(slots));
-		portEXIT_CRITICAL(&slot_mutex);
-
-		for (int i = SLOTS_SZ-1; i>=0; i-- ) {
-			if (slh[i].tout_cdwn >= 0) slh[i].tout_cdwn--;
-			if (slh[i].tout_cdwn == 0) {
-				slh[i].uid = 0;
-				slh[i].uid = 0;
-				if (i < SLOTS_SZ -1) 	//auf letzten Platz nicht schieben
-					//dahinter liegende Plätze nach vorn schieben
-					memcpy(&slh[i], &slh[i+1], (SLOTS_SZ-i-1) * sizeof(slot_entry_t));
-				slh[SLOTS_SZ-1].uid = 0;
-				slh[SLOTS_SZ-1].tout_cdwn = -1;
-			}
-		}
-
-		//zurück kopieren
-		portENTER_CRITICAL(&slot_mutex);
-		memcpy(slots, slh, sizeof(slots));
-		portEXIT_CRITICAL(&slot_mutex);
-		vTaskDelay(5*1000*MS);
-	} //while
-}
-*/
 //----------------------------------------------------------------------
