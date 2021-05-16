@@ -112,11 +112,24 @@ int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid){
 	return res;
 }
 
+//Prio des Nodes aus NIB-Zeile ermitteln
+//1 -> höchte Prio
+int nib_get_node_slot(node_info_block_t *pnib, dev_uid_t uid) {
+	int res = MAX_SLOTS;	//wenn nicht gefunden -> niedrige Prio
+	for (int i=0; i<MAX_SLOTS; i++) {
+		if (pnib->slot_info[i] == uid) {
+			res = i++;
+			break;
+		}
+	}
+	return res;
+}
+
 //Priorität eines Knotens (node_uid) für Kommunikation mit Device (dev_uid)
-//höchste Prio = 0
+//höchste Prio = 1
 //GW und Null-Einträge werden nicht mitgezählt
 int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid ) {
-	int res = 0;
+	int res = 1;
 	int ix = nib_get_uid_ix(pnib, dev_uid);
 	if (ix >= 0) {
 		for (int i = 0; i < MAX_NODES; i++) {
@@ -124,21 +137,25 @@ int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_
 			if (uid == node_uid) break;
 			else if ((uid != 0) && (uid != GW_UID)) res++;
 		}
+		return res;
+	} else {
+		return nib_get_node_slot(pnib, node_uid);
 	}
+
+}
+
+//SNR des ersten einer UID zugeordneten Nodes/GW ermitteln
+uint8_t nib_get_best_snr(node_info_block_t *pnib, dev_uid_t dev_uid) {
+	int res = 0;
+	int ix = nib_get_uid_ix(pnib, dev_uid);
+	if (ix >= 0)	//falls Geräteeintrag vorhanden
+		if (pnib->dev_info[ix].node_infos[0].node_uid > 0) //falls Nodeeintrag gültig
+			res = pnib->dev_info[ix].node_infos[0].snr;
+
 	return res;
 }
 
-//Prio des Nodes aus NIB ermitteln
-int get_node_slot(node_info_block_t *pnib, dev_uid_t uid) {
-	int res = MAX_SLOTS;	//wenn nicht gefunden -> niedrige Prio
-	for (int i=0; i<MAX_SLOTS; i++) {
-		if (pnib->slot_info[i] == uid) {
-			res = i;
-			break;
-		}
-	}
-	return res;
-}
+
 
 //NIB initialisieren
 void nib_clear_all(node_info_block_t *pnib) {

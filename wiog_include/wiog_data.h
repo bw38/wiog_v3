@@ -82,7 +82,8 @@ typedef struct __attribute__((packed)) {
 	uint8_t  revision;
 	uint8_t  species;
 	uint8_t  rssi;
-	uint8_t  tx_pwr;
+	int8_t   tx_pwr;
+	uint32_t sz_heap;
 	uint32_t cycle;
 	uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
 	uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
@@ -140,8 +141,9 @@ typedef struct __attribute__((packed)) {
 } node_info_block_t;
 
 int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid);
+int nib_get_node_slot(node_info_block_t *pnib, dev_uid_t uid);
 int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_uid);
-int get_node_slot(node_info_block_t *pnib, dev_uid_t uid);
+uint8_t nib_get_best_snr(node_info_block_t *pnib, dev_uid_t dev_uid);
 void nib_clear_all(node_info_block_t *pnib);
 
 
@@ -164,6 +166,7 @@ typedef struct __attribute__((packed)) {
 	dev_uid_t uid;
 	uint8_t  species;
 	uint32_t interval_ms;
+	uint8_t  min_snr_db;
 //	uint32_t data_len;
 //	uint8_t* data;
 } device_info_t;

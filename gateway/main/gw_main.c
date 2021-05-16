@@ -58,8 +58,10 @@ bool is_dbls_fid(uint32_t fid);
 //Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
 void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
 void bc_nib_immediately();
-uint32_t get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfoBlock ermitteln, ggf Default
-uint32_t get_interval_ms(dev_uid_t uid, species_t spec);
+uint32_t  dib_get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfoBlock ermitteln, ggf Default
+uint32_t  dib_get_interval_ms(dev_uid_t uid, species_t spec);
+uint8_t   dib_get_min_snr_db(dev_uid_t uid);
+species_t dib_get_species(dev_uid_t uid);
 //---------------------------------------------------------------------------------------------------------------
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
@@ -76,13 +78,13 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 	memcpy(&frame.wiog_hdr, header, sizeof(wiog_header_t));
 	frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //ohne FCS
-	frame.data = malloc(frame.data_len);
-	memcpy(frame.data, &ipkt->data, frame.data_len);
+	frame.pdata = malloc(frame.data_len);
+	memcpy(frame.pdata, &ipkt->pdata, frame.data_len);
 	frame.timestamp = esp_timer_get_time();	//Empfangszeitpunkt (sinnhaft ??)
 
 	if (xQueueSend(wiog_rx_queue, &frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("GW", "receive queue fail");
-			free(frame.data);
+			free(frame.pdata);
 	}
 }
 
@@ -93,6 +95,9 @@ void cb_tx_delay_slot(void* arg) {  //one-shot-timer
 	if (xQueueSend(wiog_tx_queue, ptx_frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("Tx-Queue: ", "Channelscan fail");
 	}
+	//Timer-Ressourcen freigeben
+	ESP_ERROR_CHECK(esp_timer_delete(ptx_frame->h_timer));
+	//tx-frame freigeben, wurde zuvor in Queue kopiert
 	free(ptx_frame);
 }
 
@@ -103,7 +108,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 	while ((xQueueReceive(wiog_rx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
-		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
+//		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 //		uint8_t data_len = pRx_ctrl->sig_len - sizeof(wiog_header_t) - 4;
 
@@ -118,7 +123,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				.crypt_data = false,
 				.target_time = 0,
 				.data_len = 0,
-				.data = NULL,
+				.pdata = NULL,
 			};
 			tx_frame.wiog_hdr = evt.wiog_hdr;
 			tx_frame.wiog_hdr.mac_from[5] = GATEWAY;
@@ -126,6 +131,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			tx_frame.wiog_hdr.vtype = ACK_FOR_CHANNEL;
 			tx_frame.wiog_hdr.frameid = 0;
 			tx_frame.tx_max_repeat = 0;
+			tx_frame.wiog_hdr.species = DUMMY;
 			ack_id = 1;
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
 				ESP_LOGW("Tx-Queue: ", "Channelscan fail");
@@ -135,21 +141,28 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 		else
 		//Datenpaket von Device auswerten
-		if  ((pHdr->vtype == DATA)) {
+		if  ((pHdr->vtype == DATA_TO_GW)
+//&& (pHdr->tagB >= 1) && (pHdr->mac_from[5] == REPEATER)
+			) {
 			//Ack an Device senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 			ptx_frame->crypt_data = false,
 			ptx_frame->target_time = 0,
 			ptx_frame->data_len = 0,
-			ptx_frame->data = NULL,
+			ptx_frame->pdata = NULL,
 			//Header modifiziert als ACK zurücksenden
 			ptx_frame->wiog_hdr = evt.wiog_hdr;
 			ptx_frame->wiog_hdr.mac_from[5] = GATEWAY;
 			ptx_frame->wiog_hdr.mac_to[5] = evt.wiog_hdr.species;
-			ptx_frame->wiog_hdr.vtype = ACK;
+			ptx_frame->wiog_hdr.vtype = ACK_FROM_GW;
 			ptx_frame->tx_max_repeat = 0;
+			ptx_frame->h_timer = NULL;
 			//Gerätespezifisches Interval zurückliefern
-			ptx_frame->wiog_hdr.interval_ms = get_interval_ms(pHdr->uid, pHdr->species);
+			ptx_frame->wiog_hdr.interval_ms = dib_get_interval_ms(pHdr->uid, pHdr->species);
+			//Empfehlung für Tx-PWR - Korrektur +/- db zurückliefern
+			ptx_frame->wiog_hdr.txpwr = dib_get_min_snr_db(evt.wiog_hdr.uid) - nib_get_best_snr(&nib, evt.wiog_hdr.uid);
+			//Species zuweisen (nur sinnvoll: actor/node)
+			ptx_frame->wiog_hdr.species = dib_get_species(evt.wiog_hdr.uid);
 
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
@@ -158,9 +171,8 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				  .name = "bc_act_from_gw"
 			};
 
-			esp_timer_handle_t h_timer;
-			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer, 2000)); 	// Start the timer
+			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &ptx_frame->h_timer));	//Create HiRes-Timer
+			ESP_ERROR_CHECK(esp_timer_start_once(ptx_frame->h_timer, 2000)); 	// Start the timer
 
 			//per UART an RPi-GW
 			if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
@@ -169,7 +181,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				//Datenblock entschlüsseln
 				uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
 				bzero(buf, evt.data_len);
-				if (wiog_decrypt_data(evt.data, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
+				if (wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
 					//kompletten Daten-Payload decrypted an RPi
 					send_uart_frame(buf, evt.data_len, 'A');
 				else logE("Dercrpt Error");
@@ -178,15 +190,15 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 		else
 		//Sofortmeldung eines Node - SNR nach Channelscan	-> Q-Frame an RPi
-		if (pHdr->vtype == SNR_INFO_TO_GW) {
+		if (pHdr->vtype == ACK_FOR_CHANNEL) {
 			//node_UID, Dev_UID, SNR
-			snr_info_to_uart(evt.wiog_hdr.uid, evt.wiog_hdr.tagC, evt.wiog_hdr.tagA);
+			snr_info_to_uart(evt.wiog_hdr.tagC, evt.wiog_hdr.uid, evt.wiog_hdr.tagA);
 			bc_nib_immediately();
 		}// SNR Info To GW
 
 		else
 		//ACK eines Device empfangen
-		if ((pHdr->vtype == ACK) && (pHdr->frameid == tx_fid)) {
+		if ((pHdr->vtype == ACK_TO_GW) && (pHdr->frameid == tx_fid)) {
 			//Timestamp für Tx-Delay
 			ts_ack = esp_timer_get_time();
 			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
@@ -195,7 +207,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			xSemaphoreGive(ack_timeout_Semaphore);
 		}
 
-		free(evt.data);
+		free(evt.pdata);
 	}	//while
 
 
@@ -230,9 +242,9 @@ void wiog_tx_processing_task(void *pvParameter) {
 			key[30] = (uint8_t)(u32>>=8);
 			key[31] = (uint8_t)(u32>>=8);
 
-			cbc_encrypt(evt.data, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
+			cbc_encrypt(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
 		} else {
-			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
+			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
 		}
 
 		//Semaphore resetten
@@ -252,7 +264,7 @@ void wiog_tx_processing_task(void *pvParameter) {
 			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
 		}
 
-		free(evt.data);
+		free(evt.pdata);
 	} //while Queue
 }
 
@@ -271,15 +283,16 @@ void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 	ptx_frame->wiog_hdr = wiog_get_dummy_header(ACTOR, GATEWAY);
 	ptx_frame->wiog_hdr.uid = uid;
 	ptx_frame->wiog_hdr.species = GATEWAY;
-	ptx_frame->wiog_hdr.vtype = DATA;
+	ptx_frame->wiog_hdr.vtype = DATA_FROM_GW;
 	ptx_frame->wiog_hdr.frameid = esp_random();
 	ptx_frame->tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
-	ptx_frame->wiog_hdr.interval_ms = get_interval_ms(uid, di->species);
-	ptx_frame->data = malloc(len);
-	memcpy(ptx_frame->data, buf, len);
+	ptx_frame->wiog_hdr.interval_ms = dib_get_interval_ms(uid, di->species);
+	ptx_frame->pdata = malloc(len);
+	memcpy(ptx_frame->pdata, buf, len);
 	ptx_frame->data_len = len;
 	ptx_frame->crypt_data = true;
 	ptx_frame->target_time = 0;
+	ptx_frame->h_timer = NULL;
 
 	uint32_t dts = esp_timer_get_time() - ts_ack;
 	if (dts > 20000) {
@@ -294,9 +307,8 @@ void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 			  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
 			  .name = "data_from_gw"
 		};
-		esp_timer_handle_t h_timer;
-		ESP_ERROR_CHECK(esp_timer_create(&timer_args, &h_timer));	//Create HiRes-Timer
-		ESP_ERROR_CHECK(esp_timer_start_once(h_timer, dts)); 	// Start the timer
+		ESP_ERROR_CHECK(esp_timer_create(&timer_args, &ptx_frame->h_timer));	//Create HiRes-Timer
+		ESP_ERROR_CHECK(esp_timer_start_once(ptx_frame->h_timer, dts)); 	// Start the timer
 	}
 }
 
@@ -338,13 +350,13 @@ void broadcast_nib(node_info_block_t* pnib) {
 	tx_frame.crypt_data = true;		//NIB verschlüsselt
 	tx_frame.tx_max_repeat = 0;		//keine Wiederholung = kein ACK erwartet
 	int len = len_nib + len_man;
-	tx_frame.data = malloc(len);
+	tx_frame.pdata = malloc(len);
 	//ManagementData voranstellen (f. Auswertung SID)
 	management_t man;
 	set_management_data(&man);
-	memcpy(&tx_frame.data[0], &man, sizeof(management_t));
+	memcpy(&tx_frame.pdata[0], &man, sizeof(management_t));
 
-	memcpy(&tx_frame.data[len_man], pnib, len_nib);
+	memcpy(&tx_frame.pdata[len_man], pnib, len_nib);
 	//Gesamt-Daten-Länge
 	tx_frame.data_len = len;
 	tx_frame.target_time = 0;
@@ -388,8 +400,6 @@ void app_main(void) {
 	uart0_init();
     //Create a task to handler UART event from ISR
     xTaskCreate(rx_uart_event_task, "rx_uart_event_task", 8192, NULL, 3, NULL);
-
-
 
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -509,23 +519,50 @@ device_info_t* get_device_info(dev_uid_t uid) {
 }
 
 
-uint32_t get_def_sleep_time_ms(uint8_t species){
-	uint32_t res = 0;
+uint32_t dib_get_def_sleep_time_ms(uint8_t species){
+	uint32_t res = 10*60*1000;
 	switch (species) {
-		case SENSOR:   	if (dib.def_sensor_interval_ms > 0) return dib.def_sensor_interval_ms; break;
-		case ACTOR:    	if (dib.def_actor_interval_ms  > 0) return dib.def_actor_interval_ms;  break;
-		case REPEATER: 	if (dib.def_node_interval_ms   > 0) return dib.def_node_interval_ms;   break;
+		case SENSOR:
+			if (dib.def_sensor_interval_ms > 0) return dib.def_sensor_interval_ms;
+			else return SENSOR_MIN_SLEEP_TIME_MS;
+			break;
+		case ACTOR:
+			if (dib.def_actor_interval_ms  > 0) return dib.def_actor_interval_ms;
+			else return ACTOR_DEF_SLEEP_TIME_MS;
+			break;
+		case REPEATER:
+			if (dib.def_node_interval_ms   > 0) return dib.def_node_interval_ms;
+			else return ACTOR_DEF_SLEEP_TIME_MS;
+			break;
 	}
 	return res;
 }
 
 //Interval eines Device bestimmen, aus DIB
-uint32_t get_interval_ms(dev_uid_t uid, species_t spec) {
+uint32_t dib_get_interval_ms(dev_uid_t uid, species_t spec) {
 	device_info_t* pdi = get_device_info(uid);
 	if (pdi != NULL)
 		return pdi->interval_ms;
-		else return get_def_sleep_time_ms(spec);
+	else
+		return dib_get_def_sleep_time_ms(spec);
 }
 
+
+//mindest SNR (db) eines Device aus DIB oder default
+uint8_t dib_get_min_snr_db(dev_uid_t uid) {
+	device_info_t* pdi = get_device_info(uid);
+	if (pdi != NULL)
+		return pdi->min_snr_db;
+	else
+		return 100;
+}
+
+species_t dib_get_species(dev_uid_t uid) {
+	device_info_t* pdi = get_device_info(uid);
+	if (pdi != NULL)
+		return pdi->species;
+	else
+		return DUMMY;
+}
 
 //----------------------------------------------------------------------

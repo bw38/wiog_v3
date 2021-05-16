@@ -48,11 +48,11 @@ IRAM_ATTR  void wifi_sniffer_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 	memcpy(&frame.wiog_hdr, header, sizeof(wiog_header_t));
 	frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //ohne FCS
-	frame.data = (uint8_t*)malloc(frame.data_len);
-	memcpy(frame.data, &ipkt->data, frame.data_len);
+	frame.pdata = (uint8_t*)malloc(frame.data_len);
+	memcpy(frame.pdata, &ipkt->pdata, frame.data_len);
 	if (xQueueSend(wiog_sniffer_queue, &frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("Sniffer: ", "receive queue fail");
-			free(frame.data);
+			free(frame.pdata);
 	}
 }
 
@@ -93,7 +93,7 @@ static void wiog_sniffer_task(void *pvParameter) {
 
 		last_frame_id = pHdr->frameid;
 
-		free(evt.data);
+		free(evt.pdata);
 
 		printf("| %.0fms\n", (evt.timestamp-ts_pkts_start) / 1000.0);
 

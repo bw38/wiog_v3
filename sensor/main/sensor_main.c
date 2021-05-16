@@ -19,19 +19,16 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_NONE	//s. readme.txt
 //zusätzlich Bootloader-msg  mit GPIO_15 -> low unterdrücken
 
-
-//öffentliche Variablen
-RTC_DATA_ATTR static uint32_t rtc_onTime;
-RTC_DATA_ATTR static uint8_t  rtc_no_response_cnt;
-
 //Daten, die einen Deep-Sleep überstehen müssen
 RTC_DATA_ATTR static uint8_t  rtc_wifi_channel;
 RTC_DATA_ATTR static uint32_t rtc_cycles;
 RTC_DATA_ATTR static uint32_t rtc_interval_ms;
 RTC_DATA_ATTR static int8_t   rtc_tx_pwr;		//Steuerung Sendeleistung
 RTC_DATA_ATTR static uint32_t rtc_cnt_no_scan;  //Fehlversuche Channelscan
-RTC_DATA_ATTR static uint32_t rtc_cnt_no_response;  //Fehlversuche Übertragung ??
+RTC_DATA_ATTR static uint32_t rtc_no_response;  //Fehlversuche Übertragung
+RTC_DATA_ATTR static uint8_t  rtc_no_response_serie; //Fehlversuche aufeinanderfolgend
 
+RTC_DATA_ATTR static uint32_t rtc_onTime;
 // --------------------------------------------------------------------------------
 uint16_t my_uid; //Geräte-IS wird aus efuse_MAC berechnet
 uint32_t actual_frame_id; //ID (Random) des Tx-Paketes -> f. warten auf Antwort-Frame
@@ -61,6 +58,7 @@ static xQueueHandle wiog_tx_queue;
 SemaphoreHandle_t ack_timeout_Semaphore = NULL;
 SemaphoreHandle_t goto_sleep_Semaphore = NULL;
 uint32_t interval_ms;
+int8_t tx_pwr_dB;
 
 //Prototypen
 void set_dbls_fid(uint32_t fid);
@@ -94,18 +92,18 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
 	//Pakettypen filtern
-	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK)) {
+	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK_FROM_GW)) {
 		wiog_event_rxdata_t frame;
 		memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 		memcpy(&frame.wiog_hdr, pHdr, sizeof(wiog_header_t));
 		frame.data_len = ppkt->rx_ctrl.sig_len - sizeof(wiog_header_t) - 4; //ohne FCS
-		frame.data = (uint8_t*)malloc(frame.data_len);
-		memcpy(frame.data, &ipkt->data, frame.data_len);
+		frame.pdata = (uint8_t*)malloc(frame.data_len);
+		memcpy(frame.pdata, &ipkt->pdata, frame.data_len);
 
 		//Event in die Rx-Queue stellen
 		if (xQueueSend(wiog_rx_queue, &frame, portMAX_DELAY) != pdTRUE) {
 			ESP_LOGW("Rx_Quue", "receive queue fail");
-			free(frame.data);
+			free(frame.pdata);
 		}
 	}
 }
@@ -130,7 +128,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 	while ((xQueueReceive(wiog_rx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
-		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
+//		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 
 		// Antwort auf Channel-Scan ------------------------------------------
@@ -141,11 +139,15 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 		else
 		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
-		if ((pHdr->vtype == ACK) && (tx_fid == pHdr->frameid)) {
+		if ((pHdr->vtype == ACK_FROM_GW) && (tx_fid == pHdr->frameid)) {
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
 			interval_ms = pHdr->interval_ms;
+printf("Rx-Interval: %d\n", interval_ms);
 			//bei Kanal-Abweichung Channel-Scan veranlassen
 			if (rtc_wifi_channel != pHdr->channel) rtc_wifi_channel = 0;
+			//empfohlene Tx-Pwr-Korrektur
+			tx_pwr_dB = pHdr->txpwr;
+printf("PWR-Korr: %d\n", tx_pwr_dB);
 
 			//Wiederholung stoppen
 //			tx_fid = 0;
@@ -154,7 +156,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			xSemaphoreGive(goto_sleep_Semaphore);
 		}
 
-		free(evt.data);
+		free(evt.pdata);
 	}	// Rx-Queue
 }
 
@@ -171,9 +173,9 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		bzero(buf, tx_len);
 
 		//Kanal und Tx-Power-Index im Header übertragen
-		wifi_second_chan_t ch2;
-		esp_wifi_get_channel(&evt.wiog_hdr.channel, &ch2);
-		esp_wifi_get_max_tx_power(&evt.wiog_hdr.txpwr);
+//		wifi_second_chan_t ch2;
+//		esp_wifi_get_channel(&evt.wiog_hdr.channel, &ch2);
+//		esp_wifi_get_max_tx_power(&evt.wiog_hdr.txpwr);
 
 		//Header in Puffer kopieren
 		memcpy(buf, &evt.wiog_hdr, sizeof(wiog_header_t));
@@ -189,10 +191,10 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			key[30] = (uint8_t)(u32>>=8);
 			key[31] = (uint8_t)(u32>>=8);
 
-			cbc_encrypt(evt.data, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
+			cbc_encrypt(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
 
 		} else {
-			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
+			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
 		}
 
 		//Semaphore resetten
@@ -201,9 +203,10 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		//max Wiederholungen bis ACK von GW oder Node
 		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
+			//ab 3.Wiederholung mit voller Leistung senden.
+			if (i > 2) esp_wifi_set_max_tx_power(MAX_TX_POWER);
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
-printf("Tx-Seq; %d\n", ((wiog_header_t*) buf)->seq_ctrl);
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
 			//warten auf Empfang eines ACK
 			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
@@ -213,7 +216,7 @@ printf("Tx-Seq; %d\n", ((wiog_header_t*) buf)->seq_ctrl);
 			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
 		}
 
-		free(evt.data);
+		free(evt.pdata);
 
 	}
 }
@@ -232,13 +235,14 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
 	tx_frame.wiog_hdr.uid = my_uid;
 	tx_frame.wiog_hdr.species = species;
-	tx_frame.wiog_hdr.vtype = DATA;
+	tx_frame.wiog_hdr.channel = rtc_wifi_channel;
+	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.wiog_hdr.tagD = 0;
 	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 
-	tx_frame.data = malloc(len);
-	memcpy(tx_frame.data, data, len);
+	tx_frame.pdata = malloc(len);
+	memcpy(tx_frame.pdata, data, len);
 	tx_frame.data_len = len;
 	tx_frame.crypt_data = true;
 	tx_frame.target_time = 0;
@@ -246,7 +250,6 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 
-//	free(tx_frame.data);	//Feigabe hier korrekt ?
 }
 
 //Eintragen der Management-Daten in den Payload
@@ -259,11 +262,11 @@ void set_management_data (management_t* pMan) {
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
 	pMan->cycle = rtc_cycles++;
-	pMan->cnt_no_response = rtc_cnt_no_response;
-	int8_t pwr;
-	esp_wifi_get_max_tx_power(&pwr);
-	pMan->tx_pwr = pwr;
+	pMan->cnt_no_response = rtc_no_response;
+	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
 	pMan->cnt_entries = 0;
+	//freier Heap (Info)
+	pMan->sz_heap = xPortGetFreeHeapSize();
 }
 
 // ---------------------------------------------------------------------------------
@@ -277,7 +280,7 @@ void wiog_set_channel(uint8_t ch) {
 		wiog_event_txdata_t tx_frame = {
 			.crypt_data = false,
 			.data_len = 0,
-			.data = NULL,
+			.pdata = NULL,
 			.target_time = 0	//sofort senden
 		};
 		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, species);
@@ -297,7 +300,7 @@ printf("Scan Channel: %d\n", ch);
 
 			vTaskDelay(50*MS);
 			if (rtc_wifi_channel != 0) {
-				rtc_no_response_cnt = 0;
+				rtc_no_response_serie = 0;
 				break;
 			}
 		}
@@ -317,7 +320,7 @@ printf("Set Channel: %d\n", rtc_wifi_channel);
 		esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
 		rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
 		esp_deep_sleep_disable_rom_logging();
-		printf("Goto DeepSleep for %dms\n", sleeptime_ms);
+printf("Sleep for %dms\n", sleeptime_ms);
 		esp_deep_sleep_start();
 
 	} else {
@@ -344,7 +347,8 @@ bool wiog_sensor_init() {
     	//frisch initialisieren
     	rtc_wifi_channel = 0;	//Channel-scan veranlassen
     	rtc_cycles = 0;
-    	rtc_no_response_cnt = 0;
+    	rtc_no_response = 0;
+    	rtc_no_response_serie = 0;
     	rtc_interval_ms = SENSOR_DEF_SLEEP_TIME_MS;
     	rtc_tx_pwr = MAX_TX_POWER;
     	//Systemvariablen aus NVS -> RTC-MEM
@@ -360,7 +364,7 @@ bool wiog_sensor_init() {
     }
 
     //bei wiederholt fehlendem Response -> ChannelScan erzwingen
-    if (rtc_no_response_cnt > 2) rtc_wifi_channel = 0;
+    if (rtc_no_response_serie > 1) rtc_wifi_channel = 0;
 
 	//Rx-Queue -> Low_Prio Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
@@ -395,6 +399,7 @@ bool wiog_sensor_init() {
 
 	//Kanal setzen oder Channel-Scan
 	wiog_set_channel(rtc_wifi_channel);
+
 	ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(rtc_tx_pwr));
 
 	return waked_up;
@@ -426,14 +431,28 @@ void app_main(void) {
 
 	//Antwort des Gateway/Node abwarten
 	if (xSemaphoreTake(goto_sleep_Semaphore, 500*MS) != pdTRUE) {
-		rtc_cnt_no_response++;
-printf('No response: %d\n', rtc_cnt_no_response);
+		rtc_no_response++;
+		rtc_no_response_serie++;
+	} else {
+		rtc_no_response_serie = 0;
 	}
+
+printf("No response:       %d\n", rtc_no_response);
+printf("No response serie: %d\n", rtc_no_response_serie);
 
 	//Bereichsprüfung interval
 	if (interval_ms < SENSOR_MIN_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MIN_SLEEP_TIME_MS;
 	else if (interval_ms > SENSOR_MAX_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MAX_SLEEP_TIME_MS;
 	else rtc_interval_ms = interval_ms;
+
+	//Sendeleistung im nächsten Zyklus
+	//Begrenzung aud am -3dB / +6dB je Zyklus
+	if (tx_pwr_dB < -3) tx_pwr_dB = -3;
+	if (tx_pwr_dB >  6) tx_pwr_dB =  6;
+
+	rtc_tx_pwr += tx_pwr_dB * 4;
+	if (rtc_tx_pwr > MAX_TX_POWER) rtc_tx_pwr = MAX_TX_POWER;
+	if (rtc_tx_pwr < MIN_TX_POWER) rtc_tx_pwr = MIN_TX_POWER;
 
 printf("Goto DeepSleep for %dms\n", rtc_interval_ms);
 

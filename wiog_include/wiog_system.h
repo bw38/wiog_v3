@@ -24,7 +24,6 @@
 #define MAX_NODES	4			//Max n-1 Nodes + 1GW lassen sich verwalten
 #define MAX_SLOTS	4			//Anzahl der Node-Time-Slots
 
-static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .policy=WIFI_COUNTRY_POLICY_AUTO};
 
 //Wertebereich esp_wifi_set_max_tx_power(x)
 #ifdef DEBUG_X	//reduzierte Leistung im Debug-Modus
@@ -50,7 +49,7 @@ static const wifi_country_t wifi_country_de = {.cc="DE", .schan=1, .nchan=13, .p
 //#define MY_SPECIES				SPECIES_SENSOR
 #define FIRST_SLEEP_MS			3*SEK
 
-#define SLOT_TIME_US 5000		//Repeater und Gateway - n ms
+#define SLOT_TIME_US 10000		//Repeater und Gateway - n ms
 
 
 #define SENSOR_MIN_SLEEP_TIME_MS  10*SEK
@@ -79,6 +78,14 @@ typedef uint8_t mac_addr_t[6];
 
 #define MAC_BYTE5 0xc4    // Testumgebung    (testgw)
 //#define MAC_BYTE5 0xc8		// Arbeitsumgebung (raspigw)
+
+static const wifi_country_t wifi_country_de = {
+		.cc="DE",
+		.schan=1,
+		.nchan=13,
+		.max_tx_power = MAX_TX_POWER,
+		.policy=WIFI_COUNTRY_POLICY_AUTO
+};
 
 //Netzwerk-Kennung
 static const mac_addr_t mac_net = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x00 };
@@ -112,9 +119,11 @@ typedef enum {
 	UNKNOWN = 0,
     SCAN_FOR_CHANNEL,	//Device sucht Kanal
 	ACK_FOR_CHANNEL,	//Repeater und GW antworten auf Kanalsuche
-	DATA,				//DataFrame Device <--> Gateway
-	ACK,				//Empfangsbestätigung des GW oder Device
-	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
+	DATA_TO_GW,			//DataFrame Device --> Gateway
+	ACK_FROM_GW,		//Empfangsbestätigung des GW
+	DATA_FROM_GW,
+	ACK_TO_GW,
+//	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
 	BC_NIB,				//Boradcast Node Info Block
 } vtype_t;
 
@@ -164,7 +173,7 @@ static const wiog_header_t dummy_header = {
 //Payload (Wifi Rx)
 typedef struct __attribute__((packed)){
 	wiog_header_t header;
-	uint8_t *data[1024];
+	uint8_t *pdata[1024];
 } wiog_data_frame_t;
 
 
@@ -176,7 +185,7 @@ typedef struct __attribute__((packed)){ //cb stellt Rx-Daten in die Rx-Queue
 	wiog_header_t wiog_hdr;
 	int64_t timestamp;
 	int data_len;
-	uint8_t *data;
+	uint8_t *pdata;
 } wiog_event_rxdata_t;
 
 typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
@@ -184,8 +193,9 @@ typedef struct __attribute__((packed)){ //Tx-Daten in die Tx-Queue stellen
 	int64_t target_time;	//Sendezeitpunkt -> obsolete !!!
 	uint8_t tx_max_repeat;	//Tx-Wiederholung 0 => es wird kein Ack erwartet
 	bool crypt_data;		//true -> Datenblock wird verschlüsselt
+	esp_timer_handle_t h_timer;
 	uint16_t data_len;		//Länge des Datenpaketes
-	uint8_t  *data;			//Pointer auf Datenpaket
+	uint8_t  *pdata;		//Pointer auf Datenpaket
 } wiog_event_txdata_t;
 
 
@@ -198,8 +208,8 @@ typedef struct __attribute__((packed)){
 
 // -----------------------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------------------
 
-//Prototypen iog.c
 esp_err_t event_handler(void *ctx, system_event_t *event);
 
 void tstart(uint8_t ix );
