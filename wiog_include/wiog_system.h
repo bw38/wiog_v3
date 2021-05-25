@@ -45,12 +45,13 @@
 #define FW_REVISION				00
 //#define MIN_SLEEP_TIME_MS		3*SEK
 //#define MAX_SLEEP_TIME_MS		12*STD
-//#define DEFAULT_SLEEP_TIME_MS 	10*MIN
-//#define MY_SPECIES				SPECIES_SENSOR
+//#define DEFAULT_SLEEP_TIME_MS 10*MIN
+//#define MY_SPECIES			SPECIES_SENSOR
 #define FIRST_SLEEP_MS			3*SEK
 
-#define SLOT_TIME_US 10000		//Repeater und Gateway - n ms
-
+#define SLOT_TIME_US 			8000		//Repeater und Gateway - n ms
+#define TX_REPEAT_INTERVAL		60*MS		//Tx-Wiederholung bei fehlenden ACK
+#define TX_REPEAT_CNT_MAX		5
 
 #define SENSOR_MIN_SLEEP_TIME_MS  10*SEK
 #define SENSOR_DEF_SLEEP_TIME_MS  10*MIN

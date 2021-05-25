@@ -98,10 +98,11 @@ void* get_next_entry (payload_t* pl, data_frame_t* dft) {
 
 // -----------------------------------------------------------------------------
 
-//Node-INfo_Block NIB - Prio-Node-Liste f. Repeater und Gateway
+//Node-INfo_Block NIB - Prio-Node-Liste f. Repeater
 
 //Listenplatz im NodeInfoBlock einer uid suchen
 //bei uid == 0 -> ersten freien Platz zurückliefern
+//Result: 0..n / -1 -> uid nicht gefunden
 int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid){
 	int res = -1;
 	for (int i=0; i< MAX_DEVICES; i++)
@@ -112,7 +113,8 @@ int nib_get_uid_ix(node_info_block_t *pnib, dev_uid_t uid){
 	return res;
 }
 
-//Prio des Nodes aus NIB-Zeile ermitteln
+//Slot eines Nodes f. Channelscan ermitteln
+//auch f. unbekannte Dev-UID
 //1 -> höchte Prio
 int nib_get_node_slot(node_info_block_t *pnib, dev_uid_t uid) {
 	int res = MAX_SLOTS;	//wenn nicht gefunden -> niedrige Prio
@@ -132,32 +134,41 @@ int nib_get_priority(node_info_block_t *pnib, dev_uid_t dev_uid, dev_uid_t node_
 	int res = 1;
 	int ix = nib_get_uid_ix(pnib, dev_uid);
 	if (ix >= 0) {
-		for (int i = 0; i < MAX_NODES; i++) {
-			dev_uid_t uid = pnib->dev_info[ix].node_infos[i].node_uid;
-			if (uid == node_uid) break;
-			else if ((uid != 0) && (uid != GW_UID)) res++;
+		for (int i = 0; i < 2; i++) {	//2 Nodes je device im NIB
+			dev_uid_t uid = pnib->dev_info[ix].node_uid[i];
+			if (uid == node_uid) return res;
+			res++;
 		}
-		return res;
-	} else {
+	} else {	//Dev-UID nicht gefunden -> Node in Slot-Liste suchen
 		return nib_get_node_slot(pnib, node_uid);
 	}
-
+	return MAX_SLOTS;	//nicht gefunden
 }
 
+//dyn. Größe des NIB in Bytes, abhängig von der Anzahl der Device-Einträge
+int nib_get_size(node_info_block_t* pnib) {
+	return
+		sizeof(int64_t) + 	//ts
+		sizeof(uint8_t) +	//bc_interval_sek
+		sizeof(uint16_t) +	//dev_cnt
+		sizeof(dev_uid_t) * MAX_SLOTS +
+		sizeof(dev_info_line_t) * pnib->dev_cnt;
+}
+
+
+
 //SNR des ersten einer UID zugeordneten Nodes/GW ermitteln
-uint8_t nib_get_best_snr(node_info_block_t *pnib, dev_uid_t dev_uid) {
-	int res = 0;
+int8_t nib_get_best_snr(node_info_block_t *pnib, dev_uid_t dev_uid) {
 	int ix = nib_get_uid_ix(pnib, dev_uid);
 	if (ix >= 0)	//falls Geräteeintrag vorhanden
-		if (pnib->dev_info[ix].node_infos[0].node_uid > 0) //falls Nodeeintrag gültig
-			res = pnib->dev_info[ix].node_infos[0].snr;
-
-	return res;
+		return pnib->dev_info[ix].best_snr;
+	else
+		return 0;
 }
 
 
 
 //NIB initialisieren
 void nib_clear_all(node_info_block_t *pnib) {
-	bzero(pnib, sizeof(node_info_t));
+	bzero(pnib, sizeof(node_info_block_t));
 }

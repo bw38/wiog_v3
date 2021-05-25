@@ -84,6 +84,8 @@ uint32_t ack_id = 0;		//Vergleich mit FrameID	- Tx-Wiederholungen
 uint32_t acked_fid;			//Node-Wiederholung
 uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 
+int64_t ts_tx = 0;			//ESP-Time der letzen Aussendung
+uint32_t nib_bc_interval_ms;//NIB-Interval - Weiterverteilung
 
 //Prototypen
 void set_dbls_fid(uint32_t fid);
@@ -162,6 +164,9 @@ void repeat_frame(wiog_event_rxdata_t evt) {
 	//nur Nodes mit Prio 1 & 2 des jeweiligen Device verwenden
 	int slot = nib_get_priority(&nib, evt.wiog_hdr.uid, my_uid);
 	if (slot > 2) return;
+	//falls letzer Tx < min time -> Verschiebung in Slot 3 od. 4
+	if (esp_timer_get_time() - ts_tx < 15000) slot += 2;
+
 	//Daten wieder in die Queue stellen
 	wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 	uint8_t* pdata = malloc(evt.data_len);
@@ -176,7 +181,7 @@ void repeat_frame(wiog_event_rxdata_t evt) {
 	ptx_frame->pdata = pdata;
 	ptx_frame->wiog_hdr.mac_from[5] = REPEATER;
 	ptx_frame->h_timer = NULL;
-
+	ptx_frame->wiog_hdr.tagA = slot; //Testinfo f. Sniffer
 	//über HiRes-Timer in die Tx-Queue stellen
 	start_tx_delay_timer(slot * SLOT_TIME_US, ptx_frame);
 }
@@ -280,17 +285,17 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 				if (cbc_decrypt(evt.pdata, payload, blocksz, key, sizeof(key)) == 0) {
 					//Management-Header des Gateway
 					management_t* pGw_hdr = (management_t*)&payload;
-
 					//Systemzugehörigkeit prüfen
 					if (pGw_hdr->sid == SYSTEM_ID) {
 						//Datenbereich im Anschluss an Management-Data
 						node_info_block_t *pnib = (node_info_block_t*) &payload[sizeof(management_t)];
-
 						if (pnib->ts > nib.ts){ //Aktualitätsprüfung
-							bzero(&nib, sizeof(node_info_block_t));
+							nib_clear_all(&nib);
+							if (evt.data_len > sizeof(node_info_block_t)) evt.data_len = sizeof(node_info_block_t);
 							memcpy(&nib, pnib, evt.data_len);
+							nib_bc_interval_ms = nib.bc_interval_sek * 1000;
 
-							#ifdef DEBUG_Xx
+							#ifdef DEBUG_X
 								print_nib();
 							#endif
 						}
@@ -588,9 +593,10 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+			ts_tx = esp_timer_get_time();
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
 			//warten auf Empfang eines ACK
-			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
+			if (xSemaphoreTake(ack_timeout_Semaphore, TX_REPEAT_INTERVAL) == pdTRUE) {
 				cnt_no_response_serie = 0;
 				break; //ACK empfangen -> Wiederholung abbrechen
 			}
@@ -619,7 +625,7 @@ void send_data_frame(payload_t* buf, uint16_t len, species_t spec) {
 	tx_frame.wiog_hdr.species = spec;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
-	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
+	tx_frame.tx_max_repeat = TX_REPEAT_CNT_MAX;		//max Wiederholungen, ACK erwartet
 
 	tx_frame.pdata = malloc(len);
 	memcpy(tx_frame.pdata, pdata, len);
@@ -639,6 +645,7 @@ void set_management_data (management_t* pMan) {
 	pMan->sid = SYSTEM_ID;
 	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
+	pMan->species = species;
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
 	pMan->cycle = cycle;
@@ -656,10 +663,7 @@ void broadcast_nib() {
 	//Länge der Nutzdatenblöcke
 	int len_man = sizeof(management_t);
 	//NIB nur aktive Device-Einträge
-	int len_nib = 	sizeof(int64_t) + 					//ts
-					sizeof(uint16_t) +					//dev_cnt
-					sizeof(dev_uid_t) * MAX_SLOTS +		//Slot_Array
-					(sizeof(dev_uid_t) + sizeof(node_info_t) * MAX_NODES ) * nib.dev_cnt;	//aktive Device-Zeilen
+	int len_nib = nib_get_size(&nib);
 
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
@@ -692,7 +696,7 @@ void broadcast_nib() {
 //in Node-Betrieb Zeitgesteurt eigenen NIB anderen Nodes anbieten
 IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 	while (true) {
-		vTaskDelay(NIB_BC_INTERVAL_MS * MS);
+		vTaskDelay(nib_bc_interval_ms * MS);
 		if (species == REPEATER) broadcast_nib();
 	}
 }
@@ -796,10 +800,12 @@ void app_main(void) {
     wifi_channel = 0;
 
     //Repeater-Funktion kann in Ack-Frame zugewiesen werden (DIB im GW)
-    //Liste zu Geräteverwaltung löschen
     set_species(ACTOR);
+    //Liste zu Node-Verwaltung löschen
+    nib_clear_all(&nib);
 
     interval_ms = ACTOR_DEF_SLEEP_TIME_MS;	//wird in ACK-Frame zugewiesen
+    nib_bc_interval_ms = NIB_BC_INTERVAL_MS;
 
 	//Rx-Queue -> Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
@@ -911,20 +917,19 @@ bool is_dbls_fid(uint32_t fid) {
 //zentrale Funktion zum Setzen der Species
 void set_species(species_t sp) {
 	species = sp;
-	if (species == ACTOR) nib_clear_all(&nib);
 }
 
 
 void print_nib() {
-	printf("NIB TS: %lld DevCnt: %d\n", nib.ts, nib.dev_cnt);
+	printf("NIB TS: %lld iv: %d DevCnt: %d\n", nib.ts, nib.bc_interval_sek, nib.dev_cnt);
 	//hexdump((uint8_t*) nib.dev_info, evt.data_len);
 	//hexdump((uint8_t*) nib.slot_info, sizeof(nib.slot_info));
 	for (int i=0; i<MAX_SLOTS; i++) printf("%05d | ", nib.slot_info[i]);
 	printf("\n");
 	for (int i=0; i<nib.dev_cnt; i++){
-		printf("%05d: ", nib.dev_info[i].dev_uid);
-		for (int j=0; j<MAX_NODES; j++)
-			printf(" -> %05d/%d", nib.dev_info[i].node_infos[j].node_uid, nib.dev_info[i].node_infos[j].snr);
+		printf("%05d:%02ddB ", nib.dev_info[i].dev_uid, nib.dev_info[i].best_snr);
+		for (int j=0; j<2; j++)
+			printf(" -> %05d", nib.dev_info[i].node_uid[j]);
 		printf("\n");
 	}
 }

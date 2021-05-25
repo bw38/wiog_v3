@@ -209,7 +209,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
 			//warten auf Empfang eines ACK
-			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
+			if (xSemaphoreTake(ack_timeout_Semaphore, TX_REPEAT_INTERVAL) == pdTRUE) {
 				break; //ACK empfangen -> Wiederholung abbrechen
 			}
 
@@ -239,7 +239,7 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
 	tx_frame.wiog_hdr.tagD = 0;
-	tx_frame.tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
+	tx_frame.tx_max_repeat = TX_REPEAT_CNT_MAX;	//max Wiederholungen, ACK erwartet
 
 	tx_frame.pdata = malloc(len);
 	memcpy(tx_frame.pdata, data, len);
@@ -259,6 +259,7 @@ void set_management_data (management_t* pMan) {
 	pMan->sid = SYSTEM_ID;
 	pMan->uid = my_uid;
 	pMan->wifi_channel = rtc_wifi_channel;
+	pMan->species = species;
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
 	pMan->cycle = rtc_cycles++;

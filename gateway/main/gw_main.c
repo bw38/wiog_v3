@@ -56,8 +56,10 @@ void set_dbls_fid(uint32_t fid);
 bool is_dbls_fid(uint32_t fid);
 
 //Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
-void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr);
+void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, int8_t snr);
 void bc_nib_immediately();
+void node_lifesign_to_uart(dev_uid_t nuid, int8_t snr);
+
 uint32_t  dib_get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfoBlock ermitteln, ggf Default
 uint32_t  dib_get_interval_ms(dev_uid_t uid, species_t spec);
 uint8_t   dib_get_min_snr_db(dev_uid_t uid);
@@ -113,7 +115,8 @@ static void wiog_rx_processing_task(void *pvParameter) {
 //		uint8_t data_len = pRx_ctrl->sig_len - sizeof(wiog_header_t) - 4;
 
 		//GW_UID, Dev_UID, SNR
-		snr_info_to_uart(my_uid, evt.wiog_hdr.uid, evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor);
+		int8_t snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
+		snr_info_to_uart(my_uid, evt.wiog_hdr.uid, snr);
 
 		//Antwort auf ChannelScan eines Devices -------------------------------------------
 		//Arbeitskanal wird in tx-processing in Header eingefügt
@@ -140,9 +143,18 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		} //scan_for_channel --------------------------------------------------------------
 
 		else
+		//LifeSign eines Nodes
+		if (pHdr->vtype == BC_NIB) {
+			node_lifesign_to_uart(evt.wiog_hdr.uid, snr);
+		}
+
+
+		else
 		//Datenpaket von Device auswerten
 		if  ((pHdr->vtype == DATA_TO_GW)
+//&& (pHdr->seq_ctrl > 1)
 //&& (pHdr->tagB >= 1) && (pHdr->mac_from[5] == REPEATER)
+//&& (pHdr->mac_from[5] != SENSOR)
 			) {
 			//Ack an Device senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
@@ -335,10 +347,7 @@ void set_management_data (management_t* pMan) {
 void broadcast_nib(node_info_block_t* pnib) {
 	//Länge der Nutzdatenblöcke
 	int len_man = sizeof(management_t);
-	int len_nib = 	sizeof(int64_t) + 	//ts
-					sizeof(uint16_t) +	//dev_cnt
-					sizeof(dev_uid_t) * MAX_SLOTS +
-					sizeof(dev_info_t) * pnib->dev_cnt;
+	int len_nib = nib_get_size(pnib);
 
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
@@ -490,7 +499,7 @@ bool is_dbls_fid(uint32_t fid) {
 
 // -------------------------------------------------------------------------------------------
 //Q-Frame via UART, Sofortmeldung SNR nach Device-Channelscan
-void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr) {
+void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, int8_t snr) {
 	struct  {
 		dev_uid_t node_uid;	//meldender Node / GW
 		dev_uid_t dev_uid;	//uid des anfragenden Gerätes
@@ -505,6 +514,16 @@ void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, uint8_t snr) {
 
 void bc_nib_immediately() {
 	send_uart_frame(NULL, 0, 'I');
+}
+
+
+//Aktualisierung NodeList in RPi-GW, S-Frame
+//Node-Life-Sign
+//alle Nodes senden zyklisch NIB-Broadcast
+void node_lifesign_to_uart(dev_uid_t nuid, int8_t snr) {
+	if (snr > 5) {	//minimales SNR, um als Node akzeptiert zu werden
+		send_uart_frame(&nuid, sizeof(dev_uid_t), 'S');
+	}
 }
 
 // -------------------------------------------------------------------------------------------
