@@ -100,6 +100,12 @@ typedef uint16_t dev_uid_t;	//16 Bit Geräte-UID -> Gefahr der ID-Dopplung !
 
 #define GW_UID 0xFFFF
 
+//Wakeup-Quellen der Sensoren
+typedef enum {
+	WS_ULP,
+	WS_MAIN,
+}wakeup_src_t;
+
 
 //entspricht dem letzten Byte der MAC-Adresse (mac5)
 typedef enum {

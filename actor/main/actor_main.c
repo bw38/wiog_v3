@@ -234,37 +234,6 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			int slot = nib_get_node_slot(&nib, my_uid);
 			start_tx_delay_timer(slot * SLOT_TIME_US, ptx_frame);
 
-/*
-			//SNR-Info an GW senden ---------------------------
-			//Info-Pakt im Repeater-Slot
-			//kein ACK erwartet
-			wiog_event_txdata_t* ptx_frame2 = malloc(sizeof(wiog_event_txdata_t)); //in cb freigeben !
-			ptx_frame2->crypt_data = false;
-			ptx_frame2->target_time = 0,
-			ptx_frame2->tx_max_repeat = 0;
-			ptx_frame2->data_len = 0;
-			ptx_frame2->data = NULL;
-			ptx_frame2->wiog_hdr = evt.wiog_hdr;
-			ptx_frame2->wiog_hdr.mac_from[5] = REPEATER;
-			ptx_frame2->wiog_hdr.mac_to[5] = GATEWAY;
-			ptx_frame2->wiog_hdr.uid = my_uid;				//eigene uid an GW
-			//Nutzdaten - SNR direkt im Header senden
-			ptx_frame2->wiog_hdr.vtype = SNR_INFO_TO_GW;
-			ptx_frame2->wiog_hdr.tagA = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;	//Rx - SNR von device
-			ptx_frame2->wiog_hdr.tagC = evt.wiog_hdr.uid;	//uid des devices - info
-
-
-			const esp_timer_create_args_t timer_args2 = {
-  	  			  .callback = &cb_tx_delay_slot,
-				  .arg = (void*) ptx_frame2,  // argument will be passed to cb-function
-				  .name = "scan_snr_info"
-			};
-
-			esp_timer_handle_t h_timer2;
-			ESP_ERROR_CHECK(esp_timer_create(&timer_args2, &h_timer2));	//Create HiRes-Timer
-			ESP_ERROR_CHECK(esp_timer_start_once(h_timer2, (slot+1) * SLOT_TIME_US));  //slot(0) => 5ms / slot(1) => 10ms ...
-*/
-
 		}	// Ende Kanalanfrage ----------------------------------------------------------------
 
 		else
@@ -395,156 +364,6 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			}
 		}
 
-
-/*
-		else
-		//Daten vom Gateway entschlüsseln und verarbeiten -------------------
-		//als Antwort auf zuvor gesendeten Tx-Frame ID
-		if ((dev_uid == pHdr->uid) && (actual_frame_id == pHdr->frameid) && (pHdr->vtype == RETURN_FROM_GW)) {
-
-			actual_frame_id++;	// nur einmal bearbeiten -> id verfälschen
-
-			//Länge des verschlüsselten Datenblocks
-			int blocksz = evt.data_len;
-			if (blocksz > 0) {
-				//CBC-AES-Key
-				uint8_t key[] = {AES_KEY};
-				// Key um Frame.ID ergänzen
-				uint32_t u32 = pHdr->frameid;
-				key[28] = (uint8_t)u32;
-				key[29] = (uint8_t)(u32>>=8);
-				key[30] = (uint8_t)(u32>>=8);
-				key[31] = (uint8_t)(u32>>=8);
-
-				uint8_t payload[blocksz];
-				cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key));
-
-				//Verarbeitung der Daten
-				if (evt.data_len >= sizeof(management_t)) {
-					//Management-Header des Gateway
-					management_t* pGw_hdr = malloc(sizeof(management_t));
-					//Interval des nächsten Betriebszyklus
-					memcpy(pGw_hdr, payload, sizeof(management_t));
-
-					//Gültigkeit der GW-Daten prüfen
-					if (pGw_hdr->sid == SYSTEM_ID) {
-
-						//Interval bis zum nächsten Betriebszyklus
-						uint32_t iv = pGw_hdr->interval;
-						if ((iv >= ACTOR_MIN_SLEEP_TIME_MS ) && (iv <= ACTOR_MAX_SLEEP_TIME_MS))
-							interval_ms = iv;
-						else
-							interval_ms = ACTOR_DEF_SLEEP_TIME_MS;
-
-						//falls unterschiedliche Kanäle in Wiog-hdr und GW-hdr -> Channel-Scan (in Main-Loop veranlassen)
-						if (pHdr->channel != pGw_hdr->wifi_channel)	wifi_channel = 0;
-
-						//weitere Datenauswertung in main
-//!!!!!!!!!!!!!						if (main_rx_data_cb != NULL) {	main_rx_data_cb(payload); }
-
-						//Empfang wurde bestätigt -> Tx- Widerholung abbrechen
-						xSemaphoreGive(return_timeout_Semaphore);
-
-					}
-					free(pGw_hdr);
-				}
-			}
-		}	// return from gw
-
-		//Steuerbefehl des GW an Actor
-		if ((dev_uid == pHdr->uid) && (pHdr->vtype == DATA_TO_ACTOR)) {
-			//Länge des verschlüsselten Datenblocks
-			int blocksz = evt.data_len;
-			if (blocksz > 0) {
-				//CBC-AES-Key
-				uint8_t key[] = {AES_KEY};
-				// Key um Frame.ID ergänzen
-				uint32_t u32 = pHdr->frameid;
-				key[28] = (uint8_t)u32;
-				key[29] = (uint8_t)(u32>>=8);
-				key[30] = (uint8_t)(u32>>=8);
-				key[31] = (uint8_t)(u32>>=8);
-
-				uint8_t payload[blocksz];
-				cbc_decrypt(evt.data, payload, blocksz, key, sizeof(key));
-
-				//Verarbeitung der Daten
-				//weitere Datenauswertung in main
-// !!!!!!				if (main_rx_data_cb != NULL) {	main_rx_data_cb(payload); }
-			}
-		}
-		// ================================================================
-		// Repeater-Funktion -> Datenpaket von Device an Gateway weiterleiten
-		if ((pHdr->vtype == DATA_TO_GW) && (species == REPEATER) && (!is_handledA(pHdr->frameid)) ) {
-
-			//in Liste eintragen, um Wiederholungen zu vermeiden
-			hdlA_ids[hdlA_ix] = pHdr->frameid;
-			hdlA_ix++;
-			hdlA_ix &= HDLA_SZ-1;	//Ringpuffer
-
-			uint8_t buf[pRx_ctrl->sig_len - 4];
-			memcpy(&buf[0], pHdr, sizeof(wiog_header_t));
-			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
-
-			wiog_event_txdata_t tx_frame;
-			tx_frame.wiog_hdr = evt.wiog_hdr;	//Header kopieren
-			tx_frame.crypt_data = false;		//Daten sind bereits verschlüsselt
-			tx_frame.data_len = evt.data_len;
-			tx_frame.target_time = esp_timer_get_time() + slot * 3000;	//Weiterleitung an GW im zugewiesenen Timesslot
-
-			//Rx-Daten des ersten Repeaters
-			if (pHdr->mac_from[5] < REPEATER) {
-				tx_frame.wiog_hdr.tagA = pRx_ctrl->rssi - pRx_ctrl->noise_floor; //SNR des Dev am Repeater
-				tx_frame.wiog_hdr.tagB = tx_frame.wiog_hdr.mac_from[5]; 		 //Absender-MAC des Dev
-				tx_frame.wiog_hdr.tagC = species + slot;						 //MAC des 1. Repeaters
-			}
-
-			tx_frame.wiog_hdr.mac_from[5] = species + slot;			//MAC des Rep als Absender
-			tx_frame.data = (uint8_t*)malloc(tx_frame.data_len);	//Payload 1:1 weiterleiten
-			memcpy(tx_frame.data, evt.data, evt.data_len);
-
-			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-				ESP_LOGW("Tx: ", "Tx-queue fail - 001");
-				free(tx_frame.data);
-			}
-//printf("RepToGW:  0x%08x\n", tx_frame.wiog_hdr.frameid);
-		}
-
-		// Repeater-Funktion -> Datenpaket von Gateway Device weiterleiten, wen es:
-		//  - kein Actor-Paket an die eigene UID ist
-		//  - Actor als Repeater fungiert
-		//  - Das Datenpaket in dieser Richtugn noch nicht empfangen wurde
-		if ((pHdr->vtype == RETURN_FROM_GW) && (pHdr->uid != dev_uid) &&  (species == REPEATER) && (!is_handledB(pHdr->frameid)) ) {
-
-			//in Liste eintragen, um Wiederholungen zu vermeiden
-			hdlB_ids[hdlB_ix] = pHdr->frameid;
-			hdlB_ix++;
-			hdlB_ix &= HDLB_SZ-1;	//Ringpuffer
-
-			pHdr->mac_from[5] = species + slot;
-			uint8_t buf[pRx_ctrl->sig_len - 4];
-			memcpy(&buf[0], pHdr, sizeof(wiog_header_t));
-			memcpy(&buf[sizeof(wiog_header_t)], evt.data, evt.data_len);
-
-			wiog_event_txdata_t tx_frame;
-			tx_frame.wiog_hdr = evt.wiog_hdr;	//Header kopieren
-			tx_frame.crypt_data = false;		//Daten sind bereits verschlüsselt
-			tx_frame.data_len = evt.data_len;
-			tx_frame.target_time = esp_timer_get_time() + slot * 3000;
-
-			//Header anpassen
-			tx_frame.wiog_hdr.mac_from[5] = species + slot;			//Absender anpassen
-			tx_frame.data = (uint8_t*)malloc(tx_frame.data_len);
-			memcpy(tx_frame.data, evt.data, evt.data_len);
-
-			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE) {
-				ESP_LOGW("Tx: ", "Tx-queue fail - 002");
-				free(tx_frame.data);
-			}
-//printf("RepToDev: 0x%08x\n", tx_frame.wiog_hdr.frameid);
-		}
-*/
-
 		free(evt.pdata);
 	}	//while rx queue
 }
@@ -648,10 +467,9 @@ void set_management_data (management_t* pMan) {
 	pMan->species = species;
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
-	pMan->cycle = cycle;
+	pMan->cycle = cycle++;
 	pMan->cnt_no_response = cnt_no_response;
-	int8_t pwr;
-	esp_wifi_get_max_tx_power(&pwr);
+	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
 	//freier Heap (Test Mem-Leaks)
 	pMan->sz_heap = xPortGetFreeHeapSize();
 	pMan->cnt_entries = 0;

@@ -410,7 +410,7 @@ void app_main(void) {
     //Create a task to handler UART event from ISR
     xTaskCreate(rx_uart_event_task, "rx_uart_event_task", 8192, NULL, 3, NULL);
 
-
+    esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
    	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
 	ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) ); // set country for channel range [1 .. 13]
@@ -419,21 +419,24 @@ void app_main(void) {
     ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_LR));
 	esp_wifi_set_promiscuous(true);
 	esp_wifi_set_promiscuous_rx_cb(&wiog_receive_packet_cb);
-
+	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 	ESP_ERROR_CHECK( esp_wifi_start() );
 
-    wifi_channel = 0;
+	wifi_promiscuous_filter_t filter;
+	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
+	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
+
+
+
+	wifi_channel = 0;
     bzero(&dib, sizeof(dib));
     send_uart_frame(NULL, 0, 'H');	//Send Hello-Frame an RPi
 
     //warten bis RPi mit WorkinChannel auf Hello-Frame geantwortet hat
     do { vTaskDelay(50*MS); } while (wifi_channel == 0);
     //wifi-channel mit c-Frame (UART) setzen
-	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
-	wifi_promiscuous_filter_t filter;
-	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
-	ESP_ERROR_CHECK( esp_wifi_set_promiscuous_filter(&filter) );
+
 
 	//Gateway mit max tx power
 	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));

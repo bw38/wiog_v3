@@ -12,6 +12,10 @@
 #define __WIOG_DATA_H__
 
 #include "wiog_system.h"
+
+#define MEASURE_QUEUE_SIZE 16
+xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
+
 /*
 //Standard-Frame-Typ
 typedef struct __attribute__((packed)) {
@@ -31,9 +35,12 @@ typedef enum {
 	dt_bme280   = 1,
 	dt_bme680   = 2,
 	dt_level    = 3,
-	dt_db18b20  = 4,
+	dt_ds18b20  = 4,
 	dt_heatctrl = 5,
 	dt_txt_info = 6,
+
+	dt_runtime_ms = 101,
+	dt_unknown = 255
 } datatype_t;
 
 
@@ -83,7 +90,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t  species;
 	uint8_t  rssi;
 	int8_t   tx_pwr;
-	uint32_t sz_heap;
+	uint32_t sz_heap;			//aktuelle Größe Heap
 	uint32_t cycle;
 	uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
 	uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
