@@ -19,6 +19,11 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>gadget</name>
+			<type>2</type>
+			<locationURI>PARENT-1-PROJECT_LOC/gadget</locationURI>
+		</link>
+		<link>
 			<name>main/wiog_data.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_data.c</locationURI>

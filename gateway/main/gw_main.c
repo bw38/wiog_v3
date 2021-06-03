@@ -195,7 +195,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				bzero(buf, evt.data_len);
 				if (wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
 					//kompletten Daten-Payload decrypted an RPi
-					send_uart_frame(buf, evt.data_len, 'A');
+						send_uart_frame(buf, evt.data_len, 'A');
 				else logE("Dercrpt Error");
 			}
 		}	// Data To GW ------------------------------------------

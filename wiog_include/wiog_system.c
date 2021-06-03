@@ -13,7 +13,7 @@
 #include "stdint.h"
 #include "string.h"
 #include "nvs_flash.h"
-
+#include "esp_err.h"
 
 #include "mbedtls/aes.h"
 #include "esp32/rom/aes.h"

@@ -13,9 +13,9 @@ idf_component_register(
     	"../../wiog_include/wiog_system.c"
     	"../../wiog_include/wiog_data.c"
     	"../../wiog_include/wiog_wifi.c"
-#		"ubat/ubat.c" 		
-#
-		"../../devices/ds18b20/ds18b20.c"
+#    	
+		"../../gadget/ubat/ubat.c" 		
+		"../../gadget/ds18b20/ds18b20.c"
 #		"am2302/am2302.c"	
 #		"bme280/bme280_i2c_if.c" "bme280/bme280.c"
 #		"bme280/bme280_spi_if.c" "bme280/bme280.c"	
@@ -32,6 +32,7 @@ idf_component_register(
 # ULP support additions to component CMakeLists.txt.
 set(ulp_app_name ulp_${COMPONENT_NAME})
 
+# .S - Files im ulp-Folder unterhalb von main 
 set(ulp_s_sources 
 		"ulp/ds18b20.S"
 #		"am2302/ulp/am2302_serialbus.S"

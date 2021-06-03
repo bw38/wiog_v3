@@ -30,16 +30,21 @@ typedef struct __attribute__((packed)) {
 */
 // --------------------------------------------------
 
+// synchron halten mit mqtt.cfg
 typedef enum {
-	dt_snr_info = 0,
+	dt_dummy 	= 0,
 	dt_bme280   = 1,
 	dt_bme680   = 2,
 	dt_level    = 3,
 	dt_ds18b20  = 4,
 	dt_heatctrl = 5,
 	dt_txt_info = 6,
+	dt_ubat_mv  = 7,
 
-	dt_runtime_ms = 101,
+	dt_runtime_ms = 21,
+
+	//Systemdaten werden nicht an MQTT-Server weitergeleitet
+	dt_snr_info = 101,
 	dt_unknown = 255
 } datatype_t;
 

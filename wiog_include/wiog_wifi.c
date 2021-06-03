@@ -40,7 +40,7 @@ uint32_t ack_id = 0;		//Vergleich mit Tx-FrameID
 uint32_t tx_fid;
 uint32_t interval_ms;
 int8_t tx_pwr_delta_dB = 0;
-uint16_t my_uid;
+dev_uid_t my_uid;
 
 SemaphoreHandle_t ack_timeout_Semaphore = NULL;
 SemaphoreHandle_t goto_sleep_Semaphore = NULL;
@@ -124,7 +124,6 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 			//Callback sensor_main
 			(*cb_rx_handler)(pHdr);
 
-
 			//Mainloop fortsetzen
 			xSemaphoreGive(goto_sleep_Semaphore);
 		}
@@ -190,11 +189,27 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 	}
 }
 
+//Eintragen der Management-Daten in den Payload
+//Aufrufer aktualisiert später die Anzahl der Datensätze
+//Prefix des verschlüsselten Datenblocks an RPi
+void set_management_data (management_t* pMan) {
+	pMan->sid = SYSTEM_ID;
+	pMan->uid = my_uid;
+	pMan->wifi_channel = rtc_wifi_channel;
+	pMan->species = SENSOR;
+	pMan->version = version;
+	pMan->revision = revision;
+	pMan->cycle = rtc_cycles++;
+	pMan->cnt_no_response = rtc_no_response;
+	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
+	pMan->cnt_entries = 0;
+}
+
+
 //Datenframe managed an Gateway senden
 void send_data_frame(payload_t* buf, uint16_t len) {
 
 	uint8_t *data = (uint8_t*)buf;	//Datenbereich
-
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, SENSOR);
 	tx_frame.wiog_hdr.uid = my_uid;
@@ -214,22 +229,6 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 		ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 
-}
-
-//Eintragen der Management-Daten in den Payload
-//Aufrufer aktualisiert später die Anzahl der Datensätze
-//Prefix des verschlüsselten Datenblocks an RPi
-void set_management_data (management_t* pMan) {
-	pMan->sid = SYSTEM_ID;
-	pMan->uid = my_uid;
-	pMan->wifi_channel = rtc_wifi_channel;
-	pMan->species = SENSOR;
-	pMan->version = version;
-	pMan->revision = revision;
-	pMan->cycle = rtc_cycles++;
-	pMan->cnt_no_response = rtc_no_response;
-	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
-	pMan->cnt_entries = 0;
 }
 
 //WIOG-Kanal setzen
@@ -357,9 +356,6 @@ void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {
 	} else {
 		rtc_no_response_serie = 0;
 	}
-
-printf("No response:       %d\n", rtc_no_response);
-printf("No response serie: %d\n", rtc_no_response_serie);
 
 	//Bereichsprüfung interval
 	if (interval_ms < SENSOR_MIN_SLEEP_TIME_MS) rtc_interval_ms = SENSOR_MIN_SLEEP_TIME_MS;

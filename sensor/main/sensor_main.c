@@ -14,7 +14,8 @@
 #include "../../wiog_include/wiog_data.h"
 #include "../../wiog_include/wiog_wifi.h"
 
-#include "../../devices/ds18b20/ds18b20.h"
+#include "../../gadget/ds18b20/ds18b20.h"
+#include "../../gadget/ubat/ubat.h"
 
 #include "ulp_main.h"  //ulp_xxx.h wird automatisch generiert
 
@@ -24,6 +25,11 @@
 
 #define VERSION  3
 #define REVISION 0
+
+//Measure-Response-Flags 2^n
+#define RFLAG_UBAT		1
+#define RFLAG_DS18B20	2
+
 
 //Definitions ULP-Programm
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
@@ -99,12 +105,22 @@ void app_main(void) {
     } else {
     	waked_up = true;
     }
-
-
+	//Ergebnis-Response-Queue
 	measure_response_queue = xQueueCreate(MEASURE_QUEUE_SIZE, sizeof(uint32_t));
 
-	ds18b20_start(1);
 
+    //bei Erstinbetriebnahme eines Sensors (ESP32 Rev 01) kann hier die Vref in Sensor geschrieben werden
+	//ggf in sdkconfig TP-Values und VRef ausschalten, wenn vorcalibrierter Wert nicht passt
+	//vref kann auch über 1200 liegen
+	ubat_set_vref(1180);
+	//Batteriemessung, Mess- und Steuerport initialisieren
+	//Anzahl Samples (100 => ca. 4.3ms)
+	ubat_init(UBAT_ADC_CHN, UBAT_DIV_GND, 50);
+
+
+	ds18b20_start(RFLAG_DS18B20);
+
+	//Wifi-Initialisierung
 	#ifdef DEBUG_X
 		printf("[%04d]Init Wifi\n", now());
 	#endif
@@ -114,22 +130,39 @@ void app_main(void) {
 		printf("[%04d]UID: %05d\n", now(), my_uid);
 	#endif
 
+	//Batteriespannungsmessung mit Wifi-Last starten
+	ubat_start(RFLAG_UBAT);
+
+
+	//Einsammeln der Messergebnisse
 	payload_t pl;
 	bzero(&pl, sizeof(pl));
+	set_management_data(&pl.man);
 
 	add_entry_I32(&pl, dt_runtime_ms, 0, 0, rtc_onTime);
 
-	uint32_t flags = 1;	//Maske aller Flags
-	uint32_t flag = 0;	//in der Queue zurückgeliefertes Einzelflag
+	uint32_t flags = RFLAG_UBAT |	//Maske aller Gadget-Flags
+					 RFLAG_DS18B20;
 
+	uint32_t flag = 0;	//in der Queue zurückgeliefertes Einzelflag
+	//Gadgets melden mit Response-Flage die Bereitstellung der Messergebnisse
 	while ((xQueueReceive(measure_response_queue, &flag, 200*MS) == pdTRUE)) {
 
-		if ((flags & 1) != 0){	//ds18b20-Ergebnis
-			add_entry_I32(&pl, dt_ds18b20, 0, 0, ds18b20_temperature);
-			flags &= ~flag;
-			printf("[%04d]Temp: %d\n", now(), ds18b20_temperature);
+		if ((flag & RFLAG_UBAT) != 0){	//Ergebnis Batteriespannungsmessung
+			uint32_t ures = (int)((Ubat_ADC_mV + (Ubat_ADC_mV * DIVIDER_SCALING)));
+			add_entry_I32(&pl, dt_ubat_mv, 0, 0, ures);
+			#ifdef DEBUG_X
+				printf("[%04d] ADC: %dmV | UBat: %dmV\n", now(), Ubat_ADC_mV, ures);
+			#endif
 		}
-
+		else
+		if ((flag & RFLAG_DS18B20) != 0){	//ds18b20-Ergebnis
+			add_entry_I32(&pl, dt_ds18b20, 0, 0, ds18b20_temperature);
+			#ifdef DEBUG_X
+				printf("[%04d]Temp: %d\n", now(), ds18b20_temperature);
+			#endif
+		}
+		flags &= ~flag;
 		if (flags == 0) break;
 	}
 
@@ -137,7 +170,7 @@ void app_main(void) {
 
 	}
 
-	//Data to GW
+	//Send Data to GW
 	send_data_frame(&pl, pl.ix + sizeof(pl.man));
 
 	wiog_wifi_sensor_goto_sleep(WS_ULP);
