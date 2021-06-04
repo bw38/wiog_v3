@@ -16,8 +16,8 @@ idf_component_register(
 #    	
 		"../../gadget/ubat/ubat.c" 		
 		"../../gadget/ds18b20/ds18b20.c"
-#		"am2302/am2302.c"	
-#		"bme280/bme280_i2c_if.c" "bme280/bme280.c"
+#		"../../gadget/am2302/am2302.c"	
+		"../../gadget/bme280/bme280_i2c_if.c" "../../gadget/bme280/bme280.c"
 #		"bme280/bme280_spi_if.c" "bme280/bme280.c"	
 #		"bme680/bme680_i2c_if.c" "bme680/bme680.c"
 #		"button/button.c"
@@ -32,10 +32,11 @@ idf_component_register(
 # ULP support additions to component CMakeLists.txt.
 set(ulp_app_name ulp_${COMPONENT_NAME})
 
-# .S - Files im ulp-Folder unterhalb von main 
+# .S - Files im ulp-Folder unterhalb von main
+# nur eine ULP-Auswahl möglich 
 set(ulp_s_sources 
 		"ulp/ds18b20.S"
-#		"am2302/ulp/am2302_serialbus.S"
+#		"ulp/am2302_serialbus.S"
 #		"button/ulp/button.S"
 #		"stepup/ulp/stepup.S"
 #		"ne555_level/ulp/ds18b20.S"

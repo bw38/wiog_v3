@@ -40,8 +40,10 @@ typedef enum {
 	dt_heatctrl = 5,
 	dt_txt_info = 6,
 	dt_ubat_mv  = 7,
+	dt_am2302   = 8,
 
 	dt_runtime_ms = 21,
+	dt_cycle   = 22,
 
 	//Systemdaten werden nicht an MQTT-Server weitergeleitet
 	dt_snr_info = 101,
@@ -96,7 +98,6 @@ typedef struct __attribute__((packed)) {
 	uint8_t  rssi;
 	int8_t   tx_pwr;
 	uint32_t sz_heap;			//aktuelle Größe Heap
-	uint32_t cycle;
 	uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
 	uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
 	uint8_t  cnt_entries;		//Anzahl der Datensätze

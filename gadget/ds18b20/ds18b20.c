@@ -7,10 +7,7 @@
 
 
 #include "driver/rtc_io.h"
-#include "math.h"
-
 #include "../../wiog_include/wiog_data.h"
-
 #include "ds18b20.h"
 #include "ulp_main.h"
 

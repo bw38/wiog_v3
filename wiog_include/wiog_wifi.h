@@ -13,6 +13,7 @@ static uint8_t revision = 0;
 
 extern uint16_t my_uid; //Geräte-ID wird aus efuse_MAC berechnet
 extern uint32_t rtc_interval_ms;
+extern uint32_t rtc_cycles;
 extern uint32_t rtc_onTime;
 
 void (*cb_rx_handler)(wiog_header_t* pHdr);

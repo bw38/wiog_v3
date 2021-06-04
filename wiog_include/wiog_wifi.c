@@ -26,13 +26,13 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_NONE	//s. readme.txt
 
 //Daten, die einen Deep-Sleep überstehen müssen
-RTC_DATA_ATTR static uint8_t  rtc_wifi_channel;
-RTC_DATA_ATTR static uint32_t rtc_cycles;
+RTC_DATA_ATTR uint8_t  rtc_wifi_channel;
+RTC_DATA_ATTR uint32_t rtc_cycles;
 RTC_DATA_ATTR uint32_t rtc_interval_ms;
-RTC_DATA_ATTR static int8_t   rtc_tx_pwr;		//Steuerung Sendeleistung
-RTC_DATA_ATTR static uint32_t rtc_cnt_no_scan;  //Fehlversuche Channelscan
-RTC_DATA_ATTR static uint32_t rtc_no_response;  //Fehlversuche Übertragung
-RTC_DATA_ATTR static uint8_t  rtc_no_response_serie; //Fehlversuche aufeinanderfolgend
+RTC_DATA_ATTR int8_t   rtc_tx_pwr;		//Steuerung Sendeleistung
+RTC_DATA_ATTR uint32_t rtc_cnt_no_scan;  //Fehlversuche Channelscan
+RTC_DATA_ATTR uint32_t rtc_no_response;  //Fehlversuche Übertragung
+RTC_DATA_ATTR uint8_t  rtc_no_response_serie; //Fehlversuche aufeinanderfolgend
 RTC_DATA_ATTR uint32_t rtc_onTime;		//Kumulation Prozessorzeit
 
 
@@ -199,7 +199,6 @@ void set_management_data (management_t* pMan) {
 	pMan->species = SENSOR;
 	pMan->version = version;
 	pMan->revision = revision;
-	pMan->cycle = rtc_cycles++;
 	pMan->cnt_no_response = rtc_no_response;
 	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
 	pMan->cnt_entries = 0;

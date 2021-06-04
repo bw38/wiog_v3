@@ -15,7 +15,9 @@
 #include "../../wiog_include/wiog_wifi.h"
 
 #include "../../gadget/ds18b20/ds18b20.h"
+#include "../../gadget/am2302/am2302.h"
 #include "../../gadget/ubat/ubat.h"
+#include "../../gadget/bme280/bme280_i2c_if.h"
 
 #include "ulp_main.h"  //ulp_xxx.h wird automatisch generiert
 
@@ -29,6 +31,8 @@
 //Measure-Response-Flags 2^n
 #define RFLAG_UBAT		1
 #define RFLAG_DS18B20	2
+#define RFLAG_AM2302	4
+#define RFLAG_BME280	8
 
 
 //Definitions ULP-Programm
@@ -52,25 +56,12 @@ void rx_data_handler(wiog_header_t* pHdr)  {
 //	hexdump((uint8_t*) pHdr, sizeof(wiog_header_t));
 }
 
-
-void init_rtc(void)  {
-   	//Default - Steuerport StepUp-Regler, ctrl-port pulldwn
-   	rtc_gpio_init(pwr_ctrl);
-   	rtc_gpio_set_direction(pwr_ctrl, RTC_GPIO_MODE_OUTPUT_ONLY);
-   	rtc_gpio_pullup_dis(pwr_ctrl);
-   	rtc_gpio_pulldown_en(pwr_ctrl);
-
-   	//individuelle Sensoren initialisieren
-	ds18b20_init(GPIO_DS18B20_OWP);
-}
-
-
 // --------------------------------------------------------------------------------------------------------------
 
 // Wakeup-Stub - Code wird nach DeepSleep vor dem Boot-Prozess ausgeführt
 void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
 	//StepUp-Regler einschalten oder oben halten
-// 	GPIO_REG_WRITE(RTC_GPIO_OUT_W1TS_REG, 1<<(RTC_GPIO_OUT_DATA_W1TS_S + RTC_IO_STEPUP_CTRL));
+ 	GPIO_REG_WRITE(RTC_GPIO_OUT_W1TS_REG, 1<<(RTC_GPIO_OUT_DATA_W1TS_S + RTC_IO_STEPUP_CTRL));
 
  	//Extra Delay in Wakeup Stub -> s. SDK-Config/ESP32-specific 0..5000µs
  	esp_default_wake_deep_sleep();
@@ -99,9 +90,19 @@ void app_main(void) {
     	//Systemvariablen aus NVS -> RTC-MEM
 //    	for (int ix=0; ix < MAX_SYSVAR; ix++) rtc_sysvar[ix] = nvs_get_sysvar(ix);
 
-    	init_rtc();	//RTC-GPIO initialisieren
     	init_ulp();	//ULP-Programm laden
 
+    	//RTC-GPIO initialisieren ------------------------------------------
+       	//Default - Steuerport StepUp-Regler, ctrl-port pulldwn
+       	rtc_gpio_init(pwr_ctrl);
+       	rtc_gpio_set_direction(pwr_ctrl, RTC_GPIO_MODE_OUTPUT_ONLY);
+       	rtc_gpio_pullup_dis(pwr_ctrl);
+       	rtc_gpio_pulldown_en(pwr_ctrl);
+
+       	//individuelle Sensoren initialisieren
+    	ds18b20_init(GPIO_DS18B20_OWP);
+//    	am2302_init(AM2302_GPIO_OWP);
+    	// ----------------------------------------------------------------
     } else {
     	waked_up = true;
     }
@@ -112,15 +113,18 @@ void app_main(void) {
     //bei Erstinbetriebnahme eines Sensors (ESP32 Rev 01) kann hier die Vref in Sensor geschrieben werden
 	//ggf in sdkconfig TP-Values und VRef ausschalten, wenn vorcalibrierter Wert nicht passt
 	//vref kann auch über 1200 liegen
-	ubat_set_vref(1180);
+	//ubat_set_vref(1180);
 	//Batteriemessung, Mess- und Steuerport initialisieren
-	//Anzahl Samples (100 => ca. 4.3ms)
-	ubat_init(UBAT_ADC_CHN, UBAT_DIV_GND, 50);
+	//ADC1-Chn / GPIO-GND Spannungsteiler, ohne = -1 / Anzahl Samples (100 => ca. 4.3ms)
+	ubat_init(UBAT_ADC_CHN, UBAT_DIV_GND, 100);
 
 
-	ds18b20_start(RFLAG_DS18B20);
+	//BME280 - I2C-Interface
+	esp_err_t err = bme280_i2c_master_init(BME280_I2C_MASTER_NUM, BME280_I2C_MASTER_SDA_IO, BME280_I2C_MASTER_SCL_IO, waked_up);
+	if (err == ESP_OK)
+		bme280_i2c_start(RFLAG_BME280);
 
-	//Wifi-Initialisierung
+	//Wifi-Initialisierung -----------------------------------------------
 	#ifdef DEBUG_X
 		printf("[%04d]Init Wifi\n", now());
 	#endif
@@ -129,39 +133,80 @@ void app_main(void) {
 		printf("[%04d]Wifi ready\n", now());
 		printf("[%04d]UID: %05d\n", now(), my_uid);
 	#endif
+	// ------------------------------------------------------------------
 
 	//Batteriespannungsmessung mit Wifi-Last starten
 	ubat_start(RFLAG_UBAT);
 
+	//Temp-Messung in ULP bereits erledigt, hier nur RFlag in die Response-Queue stellen
+	ds18b20_start(RFLAG_DS18B20);
 
-	//Einsammeln der Messergebnisse
+	//Temp-Messung in ULP bereits erledigt, hier nur RFlag in die Response-Queue stellen
+	//am2302_start(RFLAG_AM2302);
+
+
+	//Einsammeln der Messergebnisse ------------------------------------------
 	payload_t pl;
 	bzero(&pl, sizeof(pl));
 	set_management_data(&pl.man);
 
+	//Kernlaufzeit
 	add_entry_I32(&pl, dt_runtime_ms, 0, 0, rtc_onTime);
+	//Cycle
+	add_entry_I32(&pl, dt_cycle, 0, 0, ++rtc_cycles);
 
 	uint32_t flags = RFLAG_UBAT |	//Maske aller Gadget-Flags
-					 RFLAG_DS18B20;
+					 RFLAG_DS18B20 |
+					 RFLAG_BME280;
 
 	uint32_t flag = 0;	//in der Queue zurückgeliefertes Einzelflag
 	//Gadgets melden mit Response-Flage die Bereitstellung der Messergebnisse
 	while ((xQueueReceive(measure_response_queue, &flag, 200*MS) == pdTRUE)) {
 
 		if ((flag & RFLAG_UBAT) != 0){	//Ergebnis Batteriespannungsmessung
-			uint32_t ures = (int)((Ubat_ADC_mV + (Ubat_ADC_mV * DIVIDER_SCALING)));
+			uint32_t ures = (int)((Ubat_ADC_mV + (Ubat_ADC_mV * UBAT_DIVIDER)));
 			add_entry_I32(&pl, dt_ubat_mv, 0, 0, ures);
 			#ifdef DEBUG_X
-				printf("[%04d] ADC: %dmV | UBat: %dmV\n", now(), Ubat_ADC_mV, ures);
+				printf("[%04d]ADC: %dmV | UBat: %dmV\n", now(), Ubat_ADC_mV, ures);
 			#endif
-		}
+		}	// UBat
 		else
 		if ((flag & RFLAG_DS18B20) != 0){	//ds18b20-Ergebnis
 			add_entry_I32(&pl, dt_ds18b20, 0, 0, ds18b20_temperature);
 			#ifdef DEBUG_X
-				printf("[%04d]Temp: %d\n", now(), ds18b20_temperature);
+				printf("[%04d]DS18B20 Temp: %d\n", now(), ds18b20_temperature);
 			#endif
-		}
+		}	// DB18B20
+		else
+		if ((flag & RFLAG_AM2302) != 0){	// DHT21
+			add_entry_I32(&pl, dt_am2302, 0, 0, am2302_temperature);
+			add_entry_I32(&pl, dt_am2302, 1, 0, am2302_humidity);
+			#ifdef DEBUG_X
+				printf("[%04d]DS18B20 Temp: %d | Humi: %d\n", now(), am2302_temperature, am2302_humidity);
+			#endif
+		}	// DHT21
+
+
+		else
+		if ((flag & RFLAG_BME280) != 0){	//ds18b20-Ergebnis
+			if (rtc_bme280_init_result == 0) {
+				add_entry_I32(&pl, dt_bme280, 0, 0, bme280_pressure);
+				add_entry_I32(&pl, dt_bme280, 1, 0, bme280_temperature);
+				add_entry_I32(&pl, dt_bme280, 2, 0, bme280_humidity);
+
+				#ifdef DEBUG_X
+					printf("[%04d]Press: %d | Temp: %d | Humi: %d \n", now(),
+							bme280_pressure, bme280_temperature, bme280_humidity);
+				#endif
+			}
+			else {
+				add_entry_I32(&pl, dt_bme280, 0, 1, 0);	//Fehlermeldung Status = 1, Pressure = 0
+				printf ("Fehler BME280\n");
+			}
+		} //bme280
+
+		// .....
+
 		flags &= ~flag;
 		if (flags == 0) break;
 	}
