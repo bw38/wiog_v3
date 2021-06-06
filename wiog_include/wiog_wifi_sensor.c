@@ -1,5 +1,5 @@
 /*
- * wiog_wifi.c
+ * wiog_wifi_sensor.c
  *
  *  Created on: 26.05.2021
  *      Author: joerg
@@ -19,7 +19,7 @@
 
 #include "wiog_system.h"
 #include "wiog_data.h"
-#include "wiog_wifi.h"
+#include "wiog_wifi_sensor.h"
 
 
 #undef  LOG_LOCAL_LEVEL	//Warnhinweis vermeiden
@@ -108,7 +108,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		}
 
 		else
-		// ACK des GW auf einen Datenframe, Tx-Widerholungen stoppen
+		// ACK des GW auf einen Datenframe, Tx-Wiederholungen stoppen
 		if ((pHdr->vtype == ACK_FROM_GW) && (tx_fid == pHdr->frameid)) {
 			//Interval-Info - Plausibilitätsprüfung vor Deep_Sleep
 			interval_ms = pHdr->interval_ms;
@@ -188,6 +188,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 
 	}
 }
+
+// Datenverarbeitung ----------------------------------------------------------------------------
 
 //Eintragen der Management-Daten in den Payload
 //Aufrufer aktualisiert später die Anzahl der Datensätze

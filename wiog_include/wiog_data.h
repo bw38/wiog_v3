@@ -13,7 +13,7 @@
 
 #include "wiog_system.h"
 
-#define MEASURE_QUEUE_SIZE 16
+#define MEASURE_QUEUE_SIZE 32
 xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
 
 /*
@@ -62,7 +62,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t  frametype;	//const I32
 	uint8_t  datatype;
 	uint8_t  index;
-	uint8_t  status;	//0 = Ok / !=0 -> Fehler
+	int8_t   status;	//0 = Ok / !=0 -> Fehler
 	int32_t  value;
 } df_i32_t;
 
@@ -70,7 +70,7 @@ typedef struct __attribute__((packed)) {
 	uint8_t  frametype;	//const I64
 	uint8_t  datatype;
 	uint8_t  index;
-	uint8_t  status;	//0 = Ok / !=0 -> Fehler
+	int8_t   status;	//0 = Ok / !=0 -> Fehler
 	int64_t  value;
 } df_i64_t;
 
@@ -98,10 +98,15 @@ typedef struct __attribute__((packed)) {
 	uint8_t  rssi;
 	int8_t   tx_pwr;
 	uint32_t sz_heap;			//aktuelle Größe Heap
-	uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
-	uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
 	uint8_t  cnt_entries;		//Anzahl der Datensätze
 	uint8_t  res8A;
+	union {
+		struct {	// to GW
+			uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
+			uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
+		};
+		int64_t utime; //from GW
+	};
 } management_t;
 
 

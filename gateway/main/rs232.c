@@ -196,7 +196,7 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         								logLV("Error: Data to Sensor", uid);
         							} else {
         								//Actor: Datensatz sofort senden
-        								send_data_frame(pl.data, pl.data_len, uid);
+        								send_data_frame((payload_t*)&pl.data, pl.data_len, uid);
         							}
         						} //Frametyp 'a'
 

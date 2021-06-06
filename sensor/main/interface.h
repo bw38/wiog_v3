@@ -12,12 +12,15 @@
 #define GPIO_STEPUP_CTRL	32
 #define RTC_IO_STEPUP_CTRL	9
 
+#define LED_STATUS			GPIO_NUM_14			//Status - LED
+#define LED_STATUS_REG		IO_MUX_GPIO14_REG	//MUX-Reg
+
 //OneWirePort DS18B20
 #define GPIO_DS18B20_OWP	27
 #define RTC_IO_DS18B20_OWP	17
 
-#define AM2302_GPIO_OWP		14
-#define AM2302_RTC_IO_OWP	16
+//#define AM2302_GPIO_OWP		14
+//#define AM2302_RTC_IO_OWP	16
 
 #define UBAT_ADC_CHN		ADC1_CHANNEL_7		//Messeingang	GPIO35
 //#define UBAT_DIV_GND		GPIO_NUM_33			//Spannungsteiler während Messung nach unten ziehen

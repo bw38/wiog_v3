@@ -12,7 +12,7 @@
 
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
-#include "../../wiog_include/wiog_wifi.h"
+#include "../../wiog_include/wiog_wifi_sensor.h"
 
 #include "../../gadget/ds18b20/ds18b20.h"
 #include "../../gadget/am2302/am2302.h"
@@ -23,7 +23,10 @@
 
 #include "interface.h"
 
-
+//Status-LED
+#define LED_STATUS_INIT 	PIN_FUNC_SELECT(LED_STATUS_REG, PIN_FUNC_GPIO);	gpio_set_direction(LED_STATUS, GPIO_MODE_OUTPUT)
+#define LED_STATUS_ON		gpio_set_level(LED_STATUS, 1)
+#define LED_STATUS_OFF		gpio_set_level(LED_STATUS, 0)
 
 #define VERSION  3
 #define REVISION 0
@@ -52,8 +55,11 @@ static void init_ulp();
 
 //CallBack des Wiog-Headers nach Rx ACK, vor DeepSleep
 void rx_data_handler(wiog_header_t* pHdr)  {
-	printf("Rx - ACK\n");
-//	hexdump((uint8_t*) pHdr, sizeof(wiog_header_t));
+	LED_STATUS_OFF;
+
+	#ifdef DEBUG_X
+		printf("[%04d]Rx-ACK\n", now());
+	#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------
@@ -86,7 +92,8 @@ void app_main(void) {
 	if ((rst_reason != ESP_SLEEP_WAKEUP_ULP)  &&
     	(rst_reason != ESP_SLEEP_WAKEUP_EXT1) &&
 		(rst_reason != ESP_SLEEP_WAKEUP_TIMER)) {
-    	//frisch initialisieren
+    	//nach allgem. Reset initialisieren
+
     	//Systemvariablen aus NVS -> RTC-MEM
 //    	for (int ix=0; ix < MAX_SYSVAR; ix++) rtc_sysvar[ix] = nvs_get_sysvar(ix);
 
@@ -104,20 +111,24 @@ void app_main(void) {
 //    	am2302_init(AM2302_GPIO_OWP);
     	// ----------------------------------------------------------------
     } else {
+    	//aus DeepSleep
     	waked_up = true;
     }
+
+	LED_STATUS_INIT;
+	LED_STATUS_ON;
+
 	//Ergebnis-Response-Queue
 	measure_response_queue = xQueueCreate(MEASURE_QUEUE_SIZE, sizeof(uint32_t));
 
-
-    //bei Erstinbetriebnahme eines Sensors (ESP32 Rev 01) kann hier die Vref in Sensor geschrieben werden
-	//ggf in sdkconfig TP-Values und VRef ausschalten, wenn vorcalibrierter Wert nicht passt
-	//vref kann auch über 1200 liegen
-	//ubat_set_vref(1180);
 	//Batteriemessung, Mess- und Steuerport initialisieren
 	//ADC1-Chn / GPIO-GND Spannungsteiler, ohne = -1 / Anzahl Samples (100 => ca. 4.3ms)
 	ubat_init(UBAT_ADC_CHN, UBAT_DIV_GND, 100);
 
+    //bei Erstinbetriebnahme eines Sensors (ESP32 Rev 01) kann hier die Vref in Sensor geschrieben werden
+	//ggf in sdkconfig TP-Values und VRef ausschalten, wenn vorcalibrierter Wert nicht passt
+	//vref kann auch über 1200 liegen
+	ubat_set_vref(1180);
 
 	//BME280 - I2C-Interface
 	esp_err_t err = bme280_i2c_master_init(BME280_I2C_MASTER_NUM, BME280_I2C_MASTER_SDA_IO, BME280_I2C_MASTER_SCL_IO, waked_up);
@@ -137,6 +148,7 @@ void app_main(void) {
 
 	//Batteriespannungsmessung mit Wifi-Last starten
 	ubat_start(RFLAG_UBAT);
+	//vTaskDelay(1500*MS);			//Test ADC-Kalibrierung
 
 	//Temp-Messung in ULP bereits erledigt, hier nur RFlag in die Response-Queue stellen
 	ds18b20_start(RFLAG_DS18B20);
@@ -155,48 +167,53 @@ void app_main(void) {
 	//Cycle
 	add_entry_I32(&pl, dt_cycle, 0, 0, ++rtc_cycles);
 
-	uint32_t flags = RFLAG_UBAT |	//Maske aller Gadget-Flags
+	//Maske aller Gadget-Flags
+	uint32_t flags = RFLAG_UBAT |
 					 RFLAG_DS18B20 |
 					 RFLAG_BME280;
 
 	uint32_t flag = 0;	//in der Queue zurückgeliefertes Einzelflag
 	//Gadgets melden mit Response-Flage die Bereitstellung der Messergebnisse
 	while ((xQueueReceive(measure_response_queue, &flag, 200*MS) == pdTRUE)) {
-
 		if ((flag & RFLAG_UBAT) != 0){	//Ergebnis Batteriespannungsmessung
-			uint32_t ures = (int)((Ubat_ADC_mV + (Ubat_ADC_mV * UBAT_DIVIDER)));
+			uint32_t res = ubat_get_result();
+			uint32_t ures = (int)((res + (res * UBAT_DIVIDER)));
 			add_entry_I32(&pl, dt_ubat_mv, 0, 0, ures);
 			#ifdef DEBUG_X
-				printf("[%04d]ADC: %dmV | UBat: %dmV\n", now(), Ubat_ADC_mV, ures);
+				printf("[%04d]ADC: %dmV | UBat: %dmV\n", now(), res, ures);
 			#endif
 		}	// UBat
+
 		else
 		if ((flag & RFLAG_DS18B20) != 0){	//ds18b20-Ergebnis
-			add_entry_I32(&pl, dt_ds18b20, 0, 0, ds18b20_temperature);
+			ds18b20_result_t res = ds18b20_get_result();
+			add_entry_I32(&pl, dt_ds18b20, 0, res.status, res.temperature);
 			#ifdef DEBUG_X
-				printf("[%04d]DS18B20 Temp: %d\n", now(), ds18b20_temperature);
+				printf("[%04d]DS18B20 Temp: %d\n", now(), res.temperature);
 			#endif
 		}	// DB18B20
-		else
+/*		else
 		if ((flag & RFLAG_AM2302) != 0){	// DHT21
-			add_entry_I32(&pl, dt_am2302, 0, 0, am2302_temperature);
-			add_entry_I32(&pl, dt_am2302, 1, 0, am2302_humidity);
+			am2302_result_t res = am2302_get_result();
+			add_entry_I32(&pl, dt_am2302, 0, res.crc_check, res.temperature);
+			add_entry_I32(&pl, dt_am2302, 1, res.crc_check, res.humidity);
 			#ifdef DEBUG_X
-				printf("[%04d]DS18B20 Temp: %d | Humi: %d\n", now(), am2302_temperature, am2302_humidity);
+				printf("[%04d]DS18B20 Temp: %d | Humi: %d\n", now(), res.temperature, res.humidity);
 			#endif
 		}	// DHT21
-
+*/
 
 		else
-		if ((flag & RFLAG_BME280) != 0){	//ds18b20-Ergebnis
+		if ((flag & RFLAG_BME280) != 0) {
 			if (rtc_bme280_init_result == 0) {
-				add_entry_I32(&pl, dt_bme280, 0, 0, bme280_pressure);
-				add_entry_I32(&pl, dt_bme280, 1, 0, bme280_temperature);
-				add_entry_I32(&pl, dt_bme280, 2, 0, bme280_humidity);
+				bme280_result_t res = bme280_i2c_get_result();
+				add_entry_I32(&pl, dt_bme280, 0, res.status, res.pressure);
+				add_entry_I32(&pl, dt_bme280, 1, res.status, res.temperature);
+				add_entry_I32(&pl, dt_bme280, 2, res.status, res.humidity);
 
 				#ifdef DEBUG_X
-					printf("[%04d]Press: %d | Temp: %d | Humi: %d \n", now(),
-							bme280_pressure, bme280_temperature, bme280_humidity);
+					printf("[%04d]Press: %d | Temp: %d | Humi: %d | Status: %d\n", now(),
+							res.pressure, res.temperature, res.humidity, res.status);
 				#endif
 			}
 			else {

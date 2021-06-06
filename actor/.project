@@ -38,5 +38,15 @@
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_system.h</locationURI>
 		</link>
+		<link>
+			<name>main/wiog_wifi_actor.c</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_wifi_actor.c</locationURI>
+		</link>
+		<link>
+			<name>main/wiog_wifi_actor.h</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_wifi_actor.h</locationURI>
+		</link>
 	</linkedResources>
 </projectDescription>

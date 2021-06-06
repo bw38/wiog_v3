@@ -12,7 +12,7 @@ idf_component_register(
 		"sensor_main.c" 
     	"../../wiog_include/wiog_system.c"
     	"../../wiog_include/wiog_data.c"
-    	"../../wiog_include/wiog_wifi.c"
+    	"../../wiog_include/wiog_wifi_sensor.c"
 #    	
 		"../../gadget/ubat/ubat.c" 		
 		"../../gadget/ds18b20/ds18b20.c"

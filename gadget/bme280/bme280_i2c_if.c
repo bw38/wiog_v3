@@ -29,7 +29,7 @@ struct bme280_data bme280_comp_data;
 //SemaphoreHandle_t bme280_Semaphore;
 
 i2c_port_t i2c_mport;
-uint32_t rflag = 0;
+static uint32_t rflag = 0;
 
 //Prototypen
 int8_t bme280_i2c_init(void);
@@ -73,6 +73,16 @@ void bme280_i2c_start(uint32_t flag) {
 		xTaskCreate(get_data_bme280_i2c_task, "bme280", 2048, NULL, 3, NULL);
 }
 
+
+bme280_result_t bme280_i2c_get_result() {
+	//Messergebnisse
+	bme280_result_t res;
+	res.pressure = bme280_comp_data.pressure;
+	res.temperature = bme280_comp_data.temperature;
+	res.humidity = bme280_comp_data.humidity;
+	res.status = rtc_bme280_init_result;
+	return res;
+}
 
 // I2C - Anpassung an BME280.h --------------------------------
 
@@ -161,15 +171,6 @@ void get_data_bme280_i2c_task(void * pvParameters)
 		vTaskDelay(50 * MS);	//44ms gemessen
 //printf("[%04d] Ready\n", (int)esp_timer_get_time() / 1000);;
 	rslt = bme280_get_sensor_data(BME280_ALL, &bme280_comp_data, &bme280_device) | rslt;
-
-	#ifdef DEBUG_X
-		printf("rslt= %d -> temp %d, p %d, hum %d\r\n", rslt,
-				bme280_comp_data.temperature,  bme280_comp_data.pressure,  bme280_comp_data.humidity);
-	#endif
-	//Messergebnisse
-	bme280_pressure = bme280_comp_data.pressure;
-	bme280_temperature = bme280_comp_data.temperature;
-	bme280_humidity = bme280_comp_data.humidity;
 
 	rslt = bme280_set_sensor_mode(BME280_SLEEP_MODE, &bme280_device) | rslt;
 

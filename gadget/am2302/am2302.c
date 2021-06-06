@@ -16,13 +16,20 @@ void am2302_init(gpio_num_t owp){
   	rtc_gpio_set_direction(owp, RTC_GPIO_MODE_INPUT_ONLY);
 }
 
+//nur Rückgabe der Werte
 void am2302_start(uint32_t flag) {
-	am2302_temperature = ulp_temperature & 0xFFFF;
-	am2302_humidity    = ulp_humidity & 0xFFFF;
-	am2302_crc_check = ((am2302_temperature >> 8 ) + (am2302_temperature & 0xFF) +
-					    (am2302_humidity >> 8 ) + (am2302_humidity & 0xFF)) -
-	   				    (ulp_crc8_value & 0xFF);
 	xQueueSend(measure_response_queue, &flag, portMAX_DELAY);
+}
+
+
+am2302_result_t am2302_get_result() {
+	am2302_result_t res;
+	res.temperature = ulp_temperature & 0xFFFF;
+	res.humidity    = ulp_humidity & 0xFFFF;
+	res.crc_check = ((res.temperature >> 8 ) + (res.temperature & 0xFF) +
+					    (res.humidity >> 8 ) + (res.humidity & 0xFF)) -
+	   				    (ulp_crc8_value & 0xFF);
+	return res;
 }
 
 /*

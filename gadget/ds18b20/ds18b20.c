@@ -24,7 +24,13 @@ void ds18b20_init(gpio_num_t owp1){
 //Messung wurde bereits im ULP-Programm gestartet
 //hier nur sofortige Rückgabe des Messwertes
 void ds18b20_start(uint32_t flag) {
-	ds18b20_temperature = ((ulp_temp_raw & UINT16_MAX)*100) / 16.0;
 	xQueueSend(measure_response_queue, &flag, portMAX_DELAY);
 }
 
+//Rückgabe Messergebnis
+ds18b20_result_t ds18b20_get_result() {
+	ds18b20_result_t res;
+	res.temperature = ((ulp_temp_raw & UINT16_MAX)*100) / 16.0;
+	res.status = ulp_cnt_crc_err;
+	return res;
+}

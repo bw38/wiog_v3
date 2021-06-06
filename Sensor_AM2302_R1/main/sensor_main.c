@@ -33,6 +33,9 @@
 #define RFLAG_AM2302	4
 #define RFLAG_BME280	8
 
+#define INIT_LED_STATUS 	PIN_FUNC_SELECT(LED_STATUS_REG, PIN_FUNC_GPIO);	gpio_set_direction(LED_STATUS, GPIO_MODE_OUTPUT)
+#define LED_STATUS_ON		gpio_set_level(LED_STATUS, 1)
+#define LED_STATUS_OFF		gpio_set_level(LED_STATUS, 0)
 
 //Definitions ULP-Programm
 extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
@@ -68,6 +71,9 @@ void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
 }
 
 void app_main(void) {
+
+	INIT_LED_STATUS;
+	LED_STATUS_ON;
 
 	version = VERSION;
 	revision = REVISION;
@@ -105,7 +111,7 @@ void app_main(void) {
     //bei Erstinbetriebnahme eines Sensors (ESP32 Rev 01) kann hier die Vref in Sensor geschrieben werden
 	//ggf in sdkconfig TP-Values und VRef ausschalten, wenn vorcalibrierter Wert nicht passt
 	//vref kann auch über 1200 liegen
-	//ubat_set_vref(1180);
+	ubat_set_vref(1115);
 
 	//Batteriemessung, Mess- und Steuerport initialisieren
 	//ADC1-Chn / GPIO-GND Spannungsteiler, ohne = -1 / Anzahl Samples (100 => ca. 4.3ms)
@@ -173,8 +179,9 @@ void app_main(void) {
 	//Send Data to GW
 	send_data_frame(&pl, pl.ix + sizeof(pl.man));
 
+//	rtc_gpio_isolate(AM2302_GPIO_OWP);
 	wiog_wifi_sensor_goto_sleep(WS_ULP);
-
+	LED_STATUS_OFF;
 	//----------------------------------------------------------------
 
 }

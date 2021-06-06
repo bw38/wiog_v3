@@ -46,12 +46,12 @@
 		<link>
 			<name>main/wiog_wifi_sensor.c</name>
 			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_wifi.c</locationURI>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_wifi_sensor.c</locationURI>
 		</link>
 		<link>
 			<name>main/wiog_wifi_sensor.h</name>
 			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_wifi.h</locationURI>
+			<locationURI>PARENT-1-PROJECT_LOC/wiog_include/wiog_wifi_sensor.h</locationURI>
 		</link>
 	</linkedResources>
 </projectDescription>

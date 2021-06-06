@@ -11,14 +11,18 @@
 #include "driver/i2c.h"
 #include "bme280.h"
 
-uint32_t bme280_humidity;
-int32_t  bme280_temperature;
-uint32_t bme280_pressure;
+typedef struct {
+	uint32_t humidity;
+	int32_t  temperature;
+	uint32_t pressure;
+	int8_t	 status;
+} bme280_result_t;
 
 RTC_DATA_ATTR static int8_t rtc_bme280_init_result;
 
 //externe Funktionen
 extern esp_err_t bme280_i2c_master_init(i2c_port_t i2c_master_port, int sda_io_num, int scl_io_num, bool wu);
 extern void bme280_i2c_start(uint32_t flag);
+extern bme280_result_t bme280_i2c_get_result();
 
 #endif /* MAIN_BME280_I2C_IF_H_ */

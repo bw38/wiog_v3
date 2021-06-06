@@ -5,8 +5,8 @@
  *      Author: joerg
  */
 
-#ifndef MAIN_WIOG_WIFI_H_
-#define MAIN_WIOG_WIFI_H_
+#ifndef WIOG_WIFI_SENSOR_H_
+#define WIOG_WIFI_SENSOR_H_
 
 static uint8_t version = 0;
 static uint8_t revision = 0;
@@ -24,4 +24,4 @@ void send_data_frame(payload_t* buf, uint16_t len);
 void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus);
 
 
-#endif /* MAIN_WIOG_WIFI_H_ */
+#endif /* WIOG_WIFI_SENSOR_H_ */

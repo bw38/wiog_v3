@@ -37,11 +37,11 @@ uint32_t samples;
 adc1_channel_t adc_chn;	//Messeingang
 gpio_num_t gpio_gnd;	//Masse Spannungsteiler
 
-//extern
-int	Ubat_ADC_in_mV;		//Messergebnis an ADC-Eingang in mV
+
+int	adc_mV;		//Messergebnis an ADC-Eingang in mV
 
 esp_adc_cal_value_t vref_cal_type;
-uint32_t rflag;
+static uint32_t rflag;
 
 //Prototypen
 uint32_t nvs_get_vref();
@@ -61,8 +61,7 @@ static void get_ubat_task(void * pvParameters)
 	//Spannungsteiler hochohmig ausschalten
 	if (gpio_gnd < GPIO_NUM_MAX) gpio_set_level(gpio_gnd, 1);
 
-	Ubat_ADC_mV = esp_adc_cal_raw_to_voltage(uadc / samples, padc_chars); //Spannung mV am Messeingang
-
+	adc_mV = esp_adc_cal_raw_to_voltage(uadc / samples, padc_chars); //Spannung mV am Messeingang
 	xQueueSend(measure_response_queue, &rflag, portMAX_DELAY);	//Messung freigeben
     vTaskDelete(NULL);
 }
@@ -84,7 +83,6 @@ void ubat_init(adc1_channel_t ch, gpio_num_t in_gnd, uint32_t spl) {
 
 // Port initialisieren und Task starten
 void ubat_start(uint32_t flag) {
-
 	rflag = flag;
 
 	uint32_t dev_vref = nvs_get_vref();
@@ -121,6 +119,9 @@ void ubat_start(uint32_t flag) {
  //   return dev_vref;
 }
 
+extern uint32_t ubat_get_result() {
+	return adc_mV;
+}
 
 // --------------------------------------------------------------------
 

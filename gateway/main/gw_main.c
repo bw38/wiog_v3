@@ -283,7 +283,7 @@ void wiog_tx_processing_task(void *pvParameter) {
 
 
 //Datenframe managed an Species (Actor) senden
-void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
+void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid) {
 //	wiog_event_txdata_t tx_frame;
 	device_info_t* di = get_device_info(uid);
 	if (di == NULL) {
@@ -313,7 +313,7 @@ void send_data_frame(uint8_t* buf, uint16_t len, dev_uid_t uid) {
 			ESP_LOGW("Tx-Queue: ", "Tx Data fail");
 		free(ptx_frame);
 	} else {
-		//Antwort auf P-Frame -> Datenpaket verzögren
+		//Antwort auf P-Frame -> Datenpaket verzögern
 		const esp_timer_create_args_t timer_args = {
 	  			  .callback = &cb_tx_delay_slot,
 			  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
@@ -332,7 +332,6 @@ void set_management_data (management_t* pMan) {
 	pMan->wifi_channel = wifi_channel;
 	pMan->version = VERSION;
 	pMan->revision = REVISION;
-	pMan->cycle = 0;
 	pMan->cnt_no_response = 0; //cnt_no_response;
 	int8_t pwr;
 	esp_wifi_get_max_tx_power(&pwr);
@@ -455,17 +454,16 @@ void app_main(void) {
 		pl.ix = 0;
 		pl.man.sid = SYSTEM_ID;
 		pl.man.wifi_channel = wifi_channel;
-		pl.man.uid = 34640;						//!!!!!
+		pl.man.uid = 58227;						//!!!!!
 
 		add_entry_I32(&pl, 1, 2, 3, 12345678 );
 		add_entry_I64(&pl, 11, 22, 33,  987654321);
 
 		char txt[] = "ABCDEF";
 		add_entry_str(&pl, 55, 77, txt );
-
 		add_entry_I32(&pl, 111, 222, 255, 888888 );
 
-//		send_data_frame((uint8_t*) &pl, ACTOR);
+		send_data_frame(&pl, pl.ix + sizeof(pl.man), 58227);
 
 		vTaskDelay(15000*MS);
 	}

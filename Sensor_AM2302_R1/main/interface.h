@@ -3,18 +3,15 @@
  *
  *  Created on: 28.05.2021
  *      Author: joerg
+ *
+ *  DHT22 / AM2302 - Rohrmelder
+ *
+ *  UIDs
+ *   - 60717
  */
 
 #ifndef MAIN_INTERFACE_H_
 #define MAIN_INTERFACE_H_
-
-//StepUp-Regler-Steuerung
-//#define GPIO_STEPUP_CTRL	32
-//#define RTC_IO_STEPUP_CTRL	9
-
-//OneWirePort DS18B20
-//#define GPIO_DS18B20_OWP	27
-//#define RTC_IO_DS18B20_OWP	17
 
 #define AM2302_GPIO_OWP		26
 #define AM2302_RTC_IO_OWP	7
@@ -24,8 +21,8 @@
 //#define UBAT_DIV_GND		-1	 				// -1 -> ohne Spannungsteiler
 #define UBAT_DIVIDER		22000/8200			//Einzelwiderstände gemessen
 
-//#define BME280_I2C_MASTER_NUM		I2C_NUM_0	//0 od. 1
-//#define BME280_I2C_MASTER_SCL_IO	25			//Clock --> SCL     (Pin 3)
-//#define BME280_I2C_MASTER_SDA_IO	26			//Data <--> SDA/SDI (Pin 4)
+#define LED_STATUS			GPIO_NUM_12			//Status - LED
+#define LED_STATUS_REG		IO_MUX_GPIO12_REG	//MUX-Reg
+
 
 #endif /* MAIN_INTERFACE_H_ */

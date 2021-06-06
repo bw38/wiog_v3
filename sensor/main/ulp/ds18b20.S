@@ -62,7 +62,7 @@ lookuptable:
 
 .bss
 
-//kein Wakeup navh 1. ULP-Lauf
+//kein Wakeup nach 1. ULP-Lauf
 first_run:
 	.long 0
 
