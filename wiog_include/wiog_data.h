@@ -41,6 +41,7 @@ typedef enum {
 	dt_txt_info = 6,
 	dt_ubat_mv  = 7,
 	dt_am2302   = 8,
+	dt_bitmask  = 9,
 
 	dt_runtime_ms = 21,
 	dt_cycle   = 22,

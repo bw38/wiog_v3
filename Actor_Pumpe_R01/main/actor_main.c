@@ -3,7 +3,7 @@
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_wifi.h"
-#include "esp_now.h"
+//#include "esp_now.h"
 #include "mbedtls/aes.h"
 #include "esp32/rom/crc.h"
 #include "esp_log.h"
@@ -18,6 +18,7 @@
 #include "../../wiog_include/wiog_wifi_actor.h"
 
 #include "interface.h"
+#include "pumpe.h"
 
 #define VERSION  3
 #define REVISION 0
@@ -103,6 +104,8 @@ void app_main(void) {
 
     set_species(ACTOR);	//Repeater-Funktion kann in Ack-Frame zugewiesen werden (DIB im GW)
 
+    device_init();
+
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
 
@@ -114,31 +117,18 @@ void app_main(void) {
 		if (wifi_channel == 0) wiog_set_channel(0);
 
 		uint32_t flag;
-		xQueueReceive(measure_response_queue, &flag, interval_ms * MS) {
+		/*BaseType_t res = */
+		xQueueReceive(measure_response_queue, &flag, interval_ms * MS);
+		payload_t pl;
+		bzero(&pl, sizeof(pl));
+		set_management_data(&pl.man);
 
-		}
-
-
-
-		else {
-			//Test-Frame senden ---------------------------------------------
-			char txt[] = {"Hello World - How are you ? Das ist ein Test"};
-
-			uint8_t sz = strlen(txt) & 0xFF;
-			uint8_t data[sz+1];				//Byte 0 => Längenbyte
-			memcpy(&data[1], txt, sz);		//Byte 1 => Datenbereich
-			data[0] = sz;
-
-			payload_t pl;
-			pl.ix = 0;
-			set_management_data(&pl.man);
-			add_entry_str (&pl, dt_txt_info, 1, txt);
-			//Data to GW
-			send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
-
-			vTaskDelay(interval_ms / portTICK_PERIOD_MS);
-		}
-
+		uint32_t bm = device_get_out_bitmask();
+		add_entry_I32(&pl, dt_bitmask, 0 ,0, bm);
+		bm = device_get_in_bitmask();
+		add_entry_I32(&pl, dt_bitmask, 1 ,0, bm);
+		//Send Data to GW
+		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
 	}	//While
 }
 

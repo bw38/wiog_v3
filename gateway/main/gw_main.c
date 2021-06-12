@@ -463,7 +463,7 @@ void app_main(void) {
 		add_entry_str(&pl, 55, 77, txt );
 		add_entry_I32(&pl, 111, 222, 255, 888888 );
 
-		send_data_frame(&pl, pl.ix + sizeof(pl.man), 58227);
+//		send_data_frame(&pl, pl.ix + sizeof(pl.man), 58227);
 
 		vTaskDelay(15000*MS);
 	}
