@@ -62,10 +62,12 @@ void hexdumpex(uint8_t *data, int len) {
 
 
 //resultuerende Blocklänge ist ein aufgerundetes Vielfaches der Schlüssellänge
-int get_blocksize(int data_len, int key_len) {
+int get_blocksize(int data_len) {
 	//Blocklänge als Vielfaches von KEYLEN
-	int block_len = (data_len / key_len) * key_len;
-	if (data_len % key_len > 0) block_len += key_len;
+	uint8_t key[] = {AES_KEY};	//CBC-AES-Key
+	uint8_t szk = sizeof(key);
+	int block_len = (data_len / szk) * szk;
+	if (data_len % szk > 0) block_len += szk;
 	return block_len;
 }
 
@@ -78,7 +80,7 @@ int get_blocksize(int data_len, int key_len) {
 */
 int cbc_encrypt(uint8_t *data, uint8_t *crypted, int data_len, uint8_t *key, int key_len) {
 	uint8_t iv_crypt[] = {AES_IV};
-	int block_sz = get_blocksize(data_len, key_len);
+	int block_sz = get_blocksize(data_len);
 
 	uint8_t inbuf[block_sz];
 	bzero(inbuf, block_sz);
@@ -93,6 +95,18 @@ int cbc_encrypt(uint8_t *data, uint8_t *crypted, int data_len, uint8_t *key, int
 	return block_sz;
 }
 
+
+int wiog_encrypt_data(uint8_t* data, uint8_t* encrypted, uint16_t len, uint32_t fid) {
+	uint8_t key[] = {AES_KEY};	//CBC-AES-Key
+	uint8_t szk = sizeof(key);
+	// Frame-ID => 4 letzten Bytes im Key - salted key
+	key[szk-4] = (uint8_t)fid;
+	key[szk-3] = (uint8_t)(fid>>=8);
+	key[szk-2] = (uint8_t)(fid>>=8);
+	key[szk-1] = (uint8_t)(fid>>=8);
+	return cbc_encrypt(data, encrypted, len, key, szk);
+}
+
 /* -----------------------------
  * Entschlüsseln crypted -> data
  * data  muss auf erforderliche Blocksize durch aufrufer initialisiert worden sein
@@ -103,7 +117,6 @@ int cbc_encrypt(uint8_t *data, uint8_t *crypted, int data_len, uint8_t *key, int
 int cbc_decrypt(uint8_t *crypted, uint8_t *data, int crypt_len, uint8_t *key, int key_len){
 	bzero(data, crypt_len);
 	uint8_t iv_decrypt[] = {AES_IV};
-
 	esp_aes_context ctx;
 	esp_aes_init(&ctx);
 	esp_aes_setkey(&ctx, key, key_len*8);
@@ -120,13 +133,15 @@ int cbc_decrypt(uint8_t *crypted, uint8_t *data, int crypt_len, uint8_t *key, in
 // Result = 0 bei Erfolg
 int wiog_decrypt_data(uint8_t* encrypted, uint8_t* data, uint16_t len, uint32_t fid) {
 	uint8_t key[] = {AES_KEY};	//CBC-AES-Key
+	uint8_t szk = sizeof(key);
 	// Frame-ID => 4 letzten Bytes im Key - salted key
-	key[28] = (uint8_t)fid;
-	key[29] = (uint8_t)(fid>>=8);
-	key[30] = (uint8_t)(fid>>=8);
-	key[31] = (uint8_t)(fid>>=8);
-	return cbc_decrypt(encrypted, data, len, key, sizeof(key));
+	key[szk-4] = (uint8_t)fid;
+	key[szk-3] = (uint8_t)(fid>>=8);
+	key[szk-2] = (uint8_t)(fid>>=8);
+	key[szk-1] = (uint8_t)(fid>>=8);
+	return cbc_decrypt(encrypted, data, len, key, szk);
 }
+
 
 // -------------------------------------------------------------------------------------------------------
 
@@ -148,6 +163,37 @@ wiog_header_t wiog_get_dummy_header(uint8_t mac_to, uint8_t mac_from) {
 	hdr.mac_to[5] = mac_to;
 	hdr.mac_from[5] = mac_from;
 	return hdr;
+}
+
+
+// --- CRC16 IoG ----------------------------------------------------------------------------------------
+ //                                      16   12   5
+ // this is the CCITT CRC 16 polynomial X  + X  + X  + 1.
+ // This works out to be 0x1021, but the way the algorithm works
+ // lets us use 0x8408 (the reverse of the bit pattern).  The high
+ // bit is always assumed to be set, thus we only use 16 bits to
+ // represent the 17 bit value.
+
+#define POLY 0x8408
+uint16_t crc16(const uint8_t *data_p, uint16_t length) {
+	unsigned char i;
+	unsigned int data;
+	unsigned int crc = 0xffff;
+
+	if (length == 0) return (~crc);
+
+	do {
+		for (i = 0, data = (unsigned int) 0xff & *data_p++; i < 8; i++, data >>= 1) {
+			if ((crc & 0x0001) ^ (data & 0x0001)) crc = (crc >> 1) ^ POLY;
+			else crc >>= 1;
+		}
+	} while (--length);
+
+	crc = ~crc;
+	data = crc;
+	crc = (crc << 8) | (data >> 8 & 0xff);
+
+	return (crc);
 }
 
 

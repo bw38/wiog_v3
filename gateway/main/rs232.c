@@ -19,16 +19,13 @@
 
 
 //f. CRC-Summe
-union int16_tt {
+union uint16_tt {
 	struct {
 		char l8;
 		char h8;
 	};
 	uint16_t i16;
 };
-
-//Prototypen
-uint16_t crc16(const uint8_t *data_p, uint16_t length);
 
 
 // -----------------------------------------------------------------------------------
@@ -65,7 +62,7 @@ void send_uart_frame(const void *pl, uint16_t szup, char cFTyp)
 	gwLoad[6] = (char) ((szup >> 8) & 0xFF);
 	if (szup > 0) memcpy(gwLoad + 7, pl, szup);
 	gwLoad[szup + 7] = cFTyp;
-	union int16_tt crc;
+	union uint16_tt crc;
 	crc.i16 = crc16((uint8_t*)gwLoad, szup + 7);
 	gwLoad[szup + 8] = crc.l8;
 	gwLoad[szup + 9] = crc.h8;
@@ -83,12 +80,12 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
     int fcUART = 0;
     char rx_char;
     char cFTyp = ' ';
-    union int16_tt lenPL;
+    union uint16_tt lenPL;
     uint16_t ixPL = 0;
     uart_payload_t pl; //payload zur Weiterverarbeitung
     uint16_t ixLine = 0;
     uint8_t line[2048];	//gesamte Zeile f. CRC-Berechnung
-    union int16_tt crc;
+    union uint16_tt crc;
 
     uart_event_t event;
 
@@ -234,37 +231,6 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-#define POLY 0x8408
-/*
- //                                      16   12   5
- // this is the CCITT CRC 16 polynomial X  + X  + X  + 1.
- // This works out to be 0x1021, but the way the algorithm works
- // lets us use 0x8408 (the reverse of the bit pattern).  The high
- // bit is always assumed to be set, thus we only use 16 bits to
- // represent the 17 bit value.
- */
-//Kommunikation m. Raspi (Pascal)
-uint16_t crc16(const uint8_t *data_p, uint16_t length)
-{
-	unsigned char i;
-	unsigned int data;
-	unsigned int crc = 0xffff;
-
-	if (length == 0) return (~crc);
-
-	do {
-		for (i = 0, data = (unsigned int) 0xff & *data_p++; i < 8; i++, data >>= 1) {
-			if ((crc & 0x0001) ^ (data & 0x0001)) crc = (crc >> 1) ^ POLY;
-			else crc >>= 1;
-		}
-	} while (--length);
-
-	crc = ~crc;
-	data = crc;
-	crc = (crc << 8) | (data >> 8 & 0xff);
-
-	return (crc);
-}
 
 // -----------------------------------------------------------------------------------------
 
@@ -284,11 +250,11 @@ void logLV(char *text, int val)
 
 void logE(char *text)
 {
-	send_uart_frame((uint8_t *)text, strlen(text), 'E');
+	send_uart_frame((uint8_t *)text, strlen(text)+1, 'E');
 }
 void logW(char *text)
 {
-	send_uart_frame((uint8_t *)text, strlen(text), 'W');
+	send_uart_frame((uint8_t *)text, strlen(text)+1, 'W');
 }
 
 // -------------------------------------------------------------

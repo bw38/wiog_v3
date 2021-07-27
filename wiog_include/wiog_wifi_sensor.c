@@ -140,13 +140,14 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 
 	while ((xQueueReceive(wiog_tx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
-		uint16_t tx_len = get_blocksize(evt.data_len, AES_KEY_SZ) + sizeof(wiog_header_t);
+		uint16_t tx_len = get_blocksize(evt.data_len) + sizeof(wiog_header_t);
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
 		//Header in Puffer kopieren
 		memcpy(buf, &evt.wiog_hdr, sizeof(wiog_header_t));
 
 		if (evt.crypt_data) {
+/*
 			//Datenblock verschlüsseln
 			//CBC-AES-Key
 			uint8_t key[] = {AES_KEY};
@@ -156,9 +157,9 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			key[29] = (uint8_t)(u32>>=8);
 			key[30] = (uint8_t)(u32>>=8);
 			key[31] = (uint8_t)(u32>>=8);
-
 			cbc_encrypt(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
-
+*/
+			wiog_encrypt_data(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, evt.wiog_hdr.frameid);
 		} else {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
 		}
@@ -195,7 +196,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 //Aufrufer aktualisiert später die Anzahl der Datensätze
 //Prefix des verschlüsselten Datenblocks an RPi
 void set_management_data (management_t* pMan) {
-	pMan->sid = SYSTEM_ID;
+	pMan->crc16 = 0;
+	pMan->len = 0;
 	pMan->uid = my_uid;
 	pMan->wifi_channel = rtc_wifi_channel;
 	pMan->species = SENSOR;
@@ -209,6 +211,10 @@ void set_management_data (management_t* pMan) {
 
 //Datenframe managed an Gateway senden
 void send_data_frame(payload_t* buf, uint16_t len) {
+
+	//unverschlüsselten Payload absichern
+	buf->man.len = len;
+	buf->man.crc16 = crc16((uint8_t*)&buf->man.len, len-2);
 
 	uint8_t *data = (uint8_t*)buf;	//Datenbereich
 	wiog_event_txdata_t tx_frame;
@@ -248,6 +254,8 @@ void wiog_set_channel(uint8_t ch) {
 		tx_frame.wiog_hdr.vtype = SCAN_FOR_CHANNEL;
 		tx_frame.wiog_hdr.uid = my_uid;
 		tx_frame.wiog_hdr.species = SENSOR;
+		tx_frame.wiog_hdr.frameid = 0;
+		tx_frame.h_timer = NULL;
 
 		rtc_tx_pwr = MAX_TX_POWER;
 		ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(rtc_tx_pwr));

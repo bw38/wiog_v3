@@ -18,44 +18,10 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 
+#include "interface.h"
 #include "pumpe.h"
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
-
-//Ausgabe-Bits
-#define OUT_BIT_A1			GPIO_NUM_25
-#define INIT_OUT_BIT_A1		gpio_set_direction(OUT_BIT_A1, GPIO_MODE_INPUT_OUTPUT)
-#define OUT_BIT_A1_ON		gpio_set_level(OUT_BIT_A1, 1)
-#define OUT_BIT_A1_OFF		gpio_set_level(OUT_BIT_A1, 0)
-#define OUT_BIT_A1_SET(X)	gpio_set_level(OUT_BIT_A1, X)
-
-#define OUT_BIT_A2			GPIO_NUM_26
-#define INIT_OUT_BIT_A2		gpio_set_direction(OUT_BIT_A2, GPIO_MODE_INPUT_OUTPUT)
-#define OUT_BIT_A2_ON		gpio_set_level(OUT_BIT_A2, 1)
-#define OUT_BIT_A2_OFF		gpio_set_level(OUT_BIT_A2, 0)
-#define OUT_BIT_A2_SET(X)	gpio_set_level(OUT_BIT_A2, X)
-
-#define OUT_BIT_B1			GPIO_NUM_32
-#define INIT_OUT_BIT_B1		gpio_set_direction(OUT_BIT_B1, GPIO_MODE_INPUT_OUTPUT)
-#define OUT_BIT_B1_ON		gpio_set_level(OUT_BIT_B1, 1)
-#define OUT_BIT_B1_OFF		gpio_set_level(OUT_BIT_B1, 0)
-#define OUT_BIT_B1_SET(X)	gpio_set_level(OUT_BIT_B1, X)
-
-#define OUT_BIT_B2			GPIO_NUM_33
-#define INIT_OUT_BIT_B2		gpio_set_direction(OUT_BIT_B2, GPIO_MODE_INPUT_OUTPUT)
-#define OUT_BIT_B2_ON		gpio_set_level(OUT_BIT_B2, 1)
-#define OUT_BIT_B2_OFF		gpio_set_level(OUT_BIT_B2, 0)
-#define OUT_BIT_B2_SET(X)	gpio_set_level(OUT_BIT_B2, X)
-
-#define NS_ON	0x0A	//einziges zulässiges Bitmuster zum Einschalten der Niederspannung
-#define NS_OFF	0x05	//Niederspannung aus
-
-
-
-// Meldekontakte
-#define IN_BIT_X			GPIO_NUM_4
-#define IN_BIT_Y			GPIO_NUM_5
-#define GPIO_INPUT_PIN_SEL	((1ULL<<IN_BIT_X) | (1ULL<<IN_BIT_Y));
 
 
 typedef enum {
@@ -79,7 +45,6 @@ bool timer_task_is_running = false;
 static xQueueHandle gpio_evt_queue = NULL;
 
 //Prototypen
-uint32_t get_out_bitmask();
 void monitoring_ns_state(void *pvParameters);
 void nvs_set_nsup_time(ns_up_time_t upt, uint32_t time_ms);
 uint32_t nvs_get_nsup_time(ns_up_time_t upt);

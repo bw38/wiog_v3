@@ -41,9 +41,10 @@ void rx_ack_handler(wiog_header_t* pHdr) {
 
 //
 void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
-hexdump((uint8_t*)pl, len);
-ShowDateTime(pl->man.utime);
-
+#ifdef DEBUG_X
+	hexdump((uint8_t*)pl, len);
+	ShowDateTime(pl->man.utime);
+#endif
 	df_i32_t* pi32;
 	df_i64_t* pi64;
 	df_str_t* pstr;
@@ -88,6 +89,7 @@ ShowDateTime(pl->man.utime);
 
 
 
+
 void app_main(void) {
 	//Initialisierung --------------------------------------------------------------------------------
 	version = VERSION;
@@ -103,42 +105,41 @@ void app_main(void) {
 
     set_species(ACTOR);	//Repeater-Funktion kann in Ack-Frame zugewiesen werden (DIB im GW)
 
+    //Initialisierung der HW
+    //device_init();
+
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
 
+	#ifdef DEBUG_X
+		ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(MIN_TX_POWER));
+	#endif
+
 	// Main-Loop - Statusmeldung
 	while (true) {
+		interval_ms = 10000;
 		//falls zuvor auf 2 Dataframes das ACK ausgebleiben ist -> Channel-Scan veranlassen
-		if (cnt_no_response_serie > 1) wifi_channel = 0;
+		if (cnt_no_response_serie > 2) wifi_channel = 0;
 		//ggf Channel-Scan veranlassen
 		if (wifi_channel == 0) wiog_set_channel(0);
 
 		uint32_t flag;
-		xQueueReceive(measure_response_queue, &flag, interval_ms * MS) {
+		/*BaseType_t res = */
+		xQueueReceive(measure_response_queue, &flag, (interval_ms-1000) * MS);
+		payload_t pl;
+		bzero(&pl, sizeof(pl));
+		set_management_data(&pl.man);
 
-		}
+		/*
+		 * Daten einsammeln + add_entry_XX
+		 */
+		add_entry_I32(&pl, 0, 0, 0, 98765);
 
+		//Send Data to GW
+		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
+		//ACK mit aktuellem Interval abwarten
 
-
-		else {
-			//Test-Frame senden ---------------------------------------------
-			char txt[] = {"Hello World - How are you ? Das ist ein Test"};
-
-			uint8_t sz = strlen(txt) & 0xFF;
-			uint8_t data[sz+1];				//Byte 0 => Längenbyte
-			memcpy(&data[1], txt, sz);		//Byte 1 => Datenbereich
-			data[0] = sz;
-
-			payload_t pl;
-			pl.ix = 0;
-			set_management_data(&pl.man);
-			add_entry_str (&pl, dt_txt_info, 1, txt);
-			//Data to GW
-			send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
-
-			vTaskDelay(interval_ms / portTICK_PERIOD_MS);
-		}
-
+		vTaskDelay(1000*MS);
 	}	//While
 }
 

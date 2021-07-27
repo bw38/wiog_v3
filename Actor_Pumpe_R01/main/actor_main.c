@@ -3,9 +3,6 @@
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_wifi.h"
-//#include "esp_now.h"
-#include "mbedtls/aes.h"
-#include "esp32/rom/crc.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
@@ -42,12 +39,13 @@ void rx_ack_handler(wiog_header_t* pHdr) {
 
 //
 void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
-hexdump((uint8_t*)pl, len);
-ShowDateTime(pl->man.utime);
-
+	#ifdef DEBUG_X
+		hexdump((uint8_t*)pl, len);
+		ShowDateTime(pl->man.utime);
+	#endif
 	df_i32_t* pi32;
-	df_i64_t* pi64;
-	df_str_t* pstr;
+//	df_i64_t* pi64;
+//	df_str_t* pstr;
 	pl->ix = 0;
 	data_frame_t dft;
 
@@ -58,20 +56,22 @@ ShowDateTime(pl->man.utime);
 			pi32 = entry;
 			//erwartete DatenTypen verarbeiten
 			if (pi32->datatype == dt_bitmask) {
-				printf("BitMask: %d\n", pi32->value);
+				if ((pi32->index == 0) && (pi32->value == 1))
+					device_set_control(1);	// On-Bitmask
+				else
+					device_set_control(0);	//Off-Bitmask
 			}
-
-			printf("I32: %d |IX: %d |DT: %d\n", pi32->value, pi32->index, pi32->datatype);
+			//printf("I32: %d |IX: %d |DT: %d\n", pi32->value, pi32->index, pi32->datatype);
 			break;
 
 		case DF_I64:
-			pi64 = entry;
-			printf("I64: %lld |IX: %d\n", pi64->value, pi64->index);
+			//pi64 = entry;
+			//printf("I64: %lld |IX: %d\n", pi64->value, pi64->index);
 			break;
 
 		case DF_STR:
-			pstr = entry;
-			printf("STR: %s |IX: %d\n", pstr->txt, pstr->index);
+			//pstr = entry;
+			//printf("STR: %s |IX: %d\n", pstr->txt, pstr->index);
 			break;
 
 		case DF_NULL:
@@ -118,7 +118,7 @@ void app_main(void) {
 
 		uint32_t flag;
 		/*BaseType_t res = */
-		xQueueReceive(measure_response_queue, &flag, interval_ms * MS);
+		xQueueReceive(measure_response_queue, &flag, (interval_ms - 1000) * MS);
 		payload_t pl;
 		bzero(&pl, sizeof(pl));
 		set_management_data(&pl.man);
@@ -129,6 +129,8 @@ void app_main(void) {
 		add_entry_I32(&pl, dt_bitmask, 1 ,0, bm);
 		//Send Data to GW
 		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
+		//ACK mit aktuellem Interval abwarten
+		vTaskDelay(1000*MS);
 	}	//While
 }
 

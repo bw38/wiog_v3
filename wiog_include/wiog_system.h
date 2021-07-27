@@ -35,7 +35,7 @@
 #endif
 #define IDEAL_SNR 12		//(dB) Sensoren einpegeln
 
-#define SYSTEM_ID 19950410	//z. systemweiten Prüfung der Gütligkeit der Daten
+//#define SYSTEM_ID 19950410	//z. systemweiten Prüfung der Gütligkeit der Daten
 
 #define SEK	1e3		//ms -> Sek
 #define MIN 60e3	//ms -> Min
@@ -62,17 +62,14 @@
 #define ACTOR_DEF_SLEEP_TIME_MS 30*1000		//default 30sek
 
 
-
-#define AES_KEY_SZ 32	//Key - Länge in Bytes => 256Bit
 #define AES_KEY		0xf4, 0x45, 0xfa, 0xf7, 0x5b, 0x5a, 0x44, 0x53,\
-			 	 	0x01, 0x1a, 0x4b, 0xb2, 0xdd, 0x45, 0x78, 0xda,\
+			 	 	0x01, 0x1a, 0x4b, 0xb2, 0xdd, 0x45, 0x78, 0xda
+/*,\
 					0xf7, 0xda, 0x1a, 0x51, 0x7a, 0xf8, 0x5a, 0xfc,\
 					0x7a, 0xef, 0x65, 0x34, 0x00, 0x00, 0x00, 0x00
-
+*/
 #define AES_IV 		0xf4, 0x15, 0x0d, 0x30, 0x4f, 0x00, 0xe1, 0x80,\
-					0x98, 0x49, 0x1a, 0xf9, 0x59, 0x49, 0x68, 0x49,\
-					0xfa, 0x4e, 0xff, 0x65, 0xe8, 0x97, 0xbb, 0x56,\
-					0x32, 0x1a, 0x70, 0x98, 0xf9, 0x3a, 0x5e, 0xee
+					0x98, 0x49, 0x1a, 0xf9, 0x59, 0x49, 0x68, 0x49
 
 
 typedef uint8_t mac_addr_t[6];
@@ -89,11 +86,12 @@ static const wifi_country_t wifi_country_de = {
 };
 
 //Netzwerk-Kennung
-static const mac_addr_t mac_net = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x00 };
-static const mac_addr_t mac_gateway  = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x01 };
-static const mac_addr_t mac_sensor   = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x02 };	//Byte 6 wird  individuell ersetzt
-static const mac_addr_t mac_actor    = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x03 };
-static const mac_addr_t mac_repeater = { 0xf8, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x04 };
+//LSB in Byte1 muss 1 sein, sonst unkrontrollierte Paketwiederholungen esp_wifi_80211_tx (nur esp8266 rtos)
+static const mac_addr_t mac_net =      { 0xf9, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x00 };
+static const mac_addr_t mac_gateway  = { 0xf9, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x01 };
+static const mac_addr_t mac_sensor   = { 0xf9, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x02 };	//Byte 6 wird  individuell ersetzt
+static const mac_addr_t mac_actor    = { 0xf9, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x03 };
+static const mac_addr_t mac_repeater = { 0xf9, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x04 };
 
 
 typedef uint16_t dev_uid_t;	//16 Bit Geräte-UID -> Gefahr der ID-Dopplung !
@@ -143,12 +141,14 @@ typedef struct __attribute__((packed)){
 	mac_addr_t mac_from;
 	mac_addr_t mac_net;
 	uint16_t seq_ctrl;
-	//Vendor-Header 24..41
+	//Vendor-Header 24..n
 	uint8_t vtype;
 	uint8_t species;
 	int8_t txpwr;
 	uint8_t channel;
 	uint16_t uid;
+	uint8_t crypt;		//0: uncrypted / 1: esp32-aes-crypt / 2: simple-crypt
+	uint8_t res8_A;
 	uint32_t frameid;			//Frame-ID f. verify Ack, Random32
 	uint32_t interval_ms;
 	union {
@@ -173,6 +173,7 @@ static const wiog_header_t dummy_header = {
 	.txpwr = 0,
 	.channel = 0,
 	.uid = 0,
+	.crypt = 0,
 	.frameid = 0
 };
 
@@ -180,7 +181,7 @@ static const wiog_header_t dummy_header = {
 //Payload (Wifi Rx)
 typedef struct __attribute__((packed)){
 	wiog_header_t header;
-	uint8_t *pdata[1024];
+	uint8_t pdata[];
 } wiog_data_frame_t;
 
 
@@ -225,16 +226,19 @@ int tstop(uint8_t ix);
 void hexdump(uint8_t *data, int len);
 void hexdumpex(uint8_t *data, int len);
 
-int get_blocksize(int data_len, int key_len);
+int get_blocksize(int data_len);
 int cbc_encrypt(uint8_t *data, uint8_t *crypted, int data_len, uint8_t *key, int key_len);
 int cbc_decrypt(uint8_t *crypted, uint8_t *data, int len, uint8_t *key, int key_len);
+int wiog_encrypt_data(uint8_t* data, uint8_t* encrypted, uint16_t len, uint32_t fid);
 int wiog_decrypt_data(uint8_t* encrypted, uint8_t*data, uint16_t len, uint32_t fid);
+
 
 void wiog_set_channel(uint8_t ch);
 
 uint16_t get_uid();
 wiog_header_t wiog_get_dummy_header(uint8_t mac_to, uint8_t mac_from);
 
+uint16_t crc16(const uint8_t *data_p, uint16_t length);
 
 //NVS
 esp_err_t init_nvs();

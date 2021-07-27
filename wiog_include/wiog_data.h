@@ -16,6 +16,8 @@
 #define MEASURE_QUEUE_SIZE 32
 xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
 
+#define MAX_DATA_LEN 1024				//maximale Payload-Datenlänge
+
 /*
 //Standard-Frame-Typ
 typedef struct __attribute__((packed)) {
@@ -42,6 +44,7 @@ typedef enum {
 	dt_ubat_mv  = 7,
 	dt_am2302   = 8,
 	dt_bitmask  = 9,
+	dt_timer_sek= 10,
 
 	dt_runtime_ms = 21,
 	dt_cycle   = 22,
@@ -90,7 +93,8 @@ typedef struct __attribute__((packed)) {
 
 //#define MANAGEMENT_SZ 32
 typedef struct __attribute__((packed)) {
-	uint32_t sid;			//Systemkennung zur Validierung der Daten nach Decrypt (21041959)
+	uint16_t crc16;			//Prüfsumme ab len-word
+	uint16_t len;
 	uint16_t uid;			//ID Sensor/Actor, crc16 aus efuse-mac
 	uint8_t  wifi_channel;	//Arbeitskanal
 	uint8_t  version;

@@ -42,6 +42,7 @@ species_t species;
 
 //Daten
 uint8_t   wifi_channel;
+uint8_t	  chx;
 uint32_t  cnt_no_response;
 uint32_t  cnt_no_response_serie;
 uint32_t  cycle;
@@ -178,18 +179,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 	while ((xQueueReceive(wiog_rx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
-//		wifi_pkt_rx_ctrl_t *pRx_ctrl = &evt.rx_ctrl;
-
 		wiog_header_t *pHdr = &evt.wiog_hdr;
-
-		// Antwort auf eigenen Channel-Scan ---------------------------------
-		// Auswertung der eigenen UID nicht erforderlich
-		if (wifi_channel == 0) {
-			if (pHdr->vtype == ACK_FOR_CHANNEL) {
-				wifi_channel = pHdr->channel;	//Arbeitskanal wird in jedem WIOG-Header geliefert
-			}
-		}
-		else
 
 		//Empfang einer Kanalanfrage --------------------------------------------------------------------------------------
 		//nur im Node-Mode antworten
@@ -223,23 +213,14 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		if ((pHdr->vtype == BC_NIB) && (species == REPEATER)) {
 			int blocksz = evt.data_len;
 			if (blocksz > 0) {
-				//CBC-AES-Key
-				uint8_t key[] = {AES_KEY};
-				// Key um Frame.ID ergänzen
-				uint32_t u32 = pHdr->frameid;
-				key[28] = (uint8_t)u32;
-				key[29] = (uint8_t)(u32>>=8);
-				key[30] = (uint8_t)(u32>>=8);
-				key[31] = (uint8_t)(u32>>=8);
-
-				uint8_t payload[blocksz];
-				if (cbc_decrypt(evt.pdata, payload, blocksz, key, sizeof(key)) == 0) {
-					//Management-Header des Gateway
-					management_t* pGw_hdr = (management_t*)&payload;
-					//Systemzugehörigkeit prüfen
-					if (pGw_hdr->sid == SYSTEM_ID) {
-						//Datenbereich im Anschluss an Management-Data
-						node_info_block_t *pnib = (node_info_block_t*) &payload[sizeof(management_t)];
+				//Datenblock entschlüsseln
+				uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
+				payload_t* ppl = (payload_t*)buf;
+				if ((wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0) &&
+					//integrität des Datenblocks prüfen
+					(ppl->man.len <= MAX_DATA_LEN) &&
+					(ppl->man.crc16 == crc16((uint8_t*)&ppl->man.len, ppl->man.len-2))) {
+						node_info_block_t *pnib = (node_info_block_t*) &buf[sizeof(management_t)];
 						if (pnib->ts > nib.ts){ //Aktualitätsprüfung
 							nib_clear_all(&nib);
 							if (evt.data_len > sizeof(node_info_block_t)) evt.data_len = sizeof(node_info_block_t);
@@ -250,7 +231,8 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 								print_nib();
 							#endif
 						}
-					}
+				} else {
+					printf("NIB-Data Error\n");
 				}
 			}
 		}	//if BC_NIB
@@ -292,8 +274,10 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		else
 		//Frame an eigene UID adressiert
 		if (pHdr->uid == my_uid ) {
+			wifi_channel = pHdr->channel;	//Arbeitskanal wird in jedem WIOG-Header geliefert
+			chx = pHdr->channel;			//Channel-Scan abbrechen
 
-			// ACK des GW auf aktuelle Frame-ID, Tx-Widerholungen stoppen
+			// ACK des GW auf aktuelle Frame-ID, Tx-Wiederholungen stoppen
 			if ((pHdr->vtype == ACK_FROM_GW) && (pHdr->frameid == tx_fid)) {
 				//Tx-Wiederholungen stoppen
 				tx_fid = 0;
@@ -302,9 +286,6 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 				//Interval-Info auf Plausibilität prüfen
 				if ((pHdr->interval_ms >= ACTOR_MIN_SLEEP_TIME_MS) && (pHdr->interval_ms <= ACTOR_MAX_SLEEP_TIME_MS))
 					interval_ms = pHdr->interval_ms;
-
-				//bei Kanal-Abweichung Channel-Scan veranlassen
-				if (wifi_channel != pHdr->channel) wifi_channel = 0;
 
 				if (pHdr->species == REPEATER) set_species(REPEATER);
 				else set_species(ACTOR);
@@ -336,14 +317,17 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 				//an Datenauswertung übergeben
 				if (!is_dbls_fid(evt.wiog_hdr.frameid)) { //nur wenn Frame-ID noch nicht behandelt wurde
 					set_dbls_fid(evt.wiog_hdr.frameid);	//FID in Liste eintragen
-					//Daten via UART an RPi-GW senden	A-Frame
+
 					//Datenblock entschlüsseln
 					uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
-					bzero(buf, evt.data_len);
-					if (wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
-						(*cb_rx_data_handler)(pHdr, (payload_t*)buf, evt.data_len);	//Callback actor_main
-					else
-						printf("Dercrpt Error");
+					payload_t* ppl = (payload_t*)buf;
+					if ((wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0) &&
+						//integrität des Datenblocks prüfen
+						(ppl->man.len <= MAX_DATA_LEN) &&
+						(ppl->man.crc16 == crc16((uint8_t*)&ppl->man.len, ppl->man.len-2)))
+							//Callback actor_main
+							(*cb_rx_data_handler)(pHdr, (payload_t*)buf, ppl->man.len);
+					else printf("Payload-Error\n");
 				}
 			}
 		}
@@ -358,29 +342,25 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 	wiog_event_txdata_t evt;
 
 	while ((xQueueReceive(wiog_tx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
-		uint16_t tx_len = get_blocksize(evt.data_len, AES_KEY_SZ) + sizeof(wiog_header_t);
+		uint16_t tx_len = get_blocksize(evt.data_len) + sizeof(wiog_header_t);
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
 
-		//Kanal und Tx-Power-Index im Header übertragen
+		//ggf Kanalkorrektur
+		uint8_t ch;
 		wifi_second_chan_t ch2;
-		esp_wifi_get_channel(&evt.wiog_hdr.channel, &ch2);
+		ESP_ERROR_CHECK( esp_wifi_get_channel(&ch, &ch2) );
+		if (ch != wifi_channel) {
+			ESP_ERROR_CHECK( esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE));
+			printf("Change Wifi-channel: %d -> %d\n", ch, wifi_channel);
+		};
+		evt.wiog_hdr.channel =   wifi_channel;
 
 		//Header in Puffer kopieren
 		memcpy(buf, &evt.wiog_hdr, sizeof(wiog_header_t));
 
 		if (evt.crypt_data) {
-			//Datenblock verschlüsseln
-			//CBC-AES-Key
-			uint8_t key[] = {AES_KEY};
-			// Frame-ID => 4 letzten Byres im Key
-			uint32_t u32 = evt.wiog_hdr.frameid;
-			key[28] = (uint8_t)u32;
-			key[29] = (uint8_t)(u32>>=8);
-			key[30] = (uint8_t)(u32>>=8);
-			key[31] = (uint8_t)(u32>>=8);
-
-			cbc_encrypt(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
+			wiog_encrypt_data(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, evt.wiog_hdr.frameid);
 		} else {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
 		}
@@ -416,7 +396,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 //Eintragen der Management-Daten in den Payload
 //Aufrufer aktualisiert später die Anzahl der Datensätze
 void set_management_data (management_t* pMan) {
-	pMan->sid = SYSTEM_ID;
+	pMan->crc16 = 0;
+	pMan->len = 0;
 	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
 	pMan->species = species;
@@ -432,6 +413,10 @@ void set_management_data (management_t* pMan) {
 
 //Datenframe managed an Gateway senden
 void send_data_frame(payload_t* buf, uint16_t len, species_t spec) {
+
+	//unverschlüsselten Payload absichern
+	buf->man.len = len;
+	buf->man.crc16 = crc16((uint8_t*)&buf->man.len, len-2);
 
 	uint8_t *pdata = (uint8_t*)buf;	//Datenbereich
 
@@ -460,11 +445,11 @@ void send_data_frame(payload_t* buf, uint16_t len, species_t spec) {
 //aktuellen NodeInfoBlock an andere Nodes im Netz verteilen, kein ACK erwartet
 //incl. Managementdaten
 void broadcast_nib() {
+	if (nib.ts == 0) return; //nur weiter, wenn gültiger NIB empfangen wurde
 	//Länge der Nutzdatenblöcke
 	int len_man = sizeof(management_t);
 	//NIB nur aktive Device-Einträge
 	int len_nib = nib_get_size(&nib);
-
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(DUMMY, REPEATER);
@@ -485,6 +470,11 @@ void broadcast_nib() {
 	tx_frame.data_len = len;
 	tx_frame.target_time = 0;
 	tx_frame.h_timer = NULL;
+
+	//unverschlüsselten Payload absichern
+	management_t* pman = (management_t*)tx_frame.pdata;
+	pman->len = len;
+	pman->crc16 = crc16((uint8_t*)&pman->len, len-2);
 
 	//Datenpaket in Tx-Queue stellen, queued BY COPY !
 	//data wird in tx_processing_task freigegeben
@@ -555,43 +545,32 @@ void wiog_set_channel(uint8_t ch) {
 		tx_frame.h_timer = NULL;
 		ack_id = 1;	//Abbruch in Tx-Task verhindern
 
+		chx = 0; //wird in rx ack gesetzt
 		for (ch = 1; ch <= wifi_country_de.nchan; ch++) {
-			ESP_ERROR_CHECK( esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE));
-			tx_frame.wiog_hdr.channel = ch;
+			wifi_channel = ch;	//Kanal in Tx-Queue einstellen
 			//Tx-Frame in Tx-Queue stellen
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
-					ESP_LOGW("Tx-Queue: ", "Scan fail");
-printf("Scan Channel: %d\n", ch);
-
-			vTaskDelay(50*MS);
+				ESP_LOGW("Tx-Queue: ", "Scan fail");
+			vTaskDelay(150*MS);
 			//wifi_channel wird bei Empfang Ack gesetzt
-			if (wifi_channel != 0) {
-				cnt_no_response = 0;
+			if (chx != 0) {
+				cnt_no_response_serie = 0;
 				break;
 			}
 		}
 
-		//wenn nach einem Durchlauf kein Kanal gefunden wurde -> Gerät in DeepSleep
-		if (wifi_channel == 0) {
+		//wenn nach einem Durchlauf kein Kanal gefunden wurde -> 5 Sek Pause
+		if (chx == 0) {
+			wifi_channel = 0;
 			vTaskDelay(5000*MS);
-/*
-			uint32_t sleeptime_ms = 5*1000;
-			esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
-		    rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
-		    esp_deep_sleep_disable_rom_logging();
-		    printf("No Wifi-Channel - goto DeepSleep for %dms\n", sleeptime_ms);
-			esp_deep_sleep_start();
-*/
-		} else {
-			ESP_ERROR_CHECK( esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE));
 		}
-
 	} else {
 		wifi_channel = ch;
-		ESP_ERROR_CHECK( esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE) );
 	}
+	ESP_ERROR_CHECK( esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE));
 	printf("Set Wifi-channel: %d\n", wifi_channel);
 }
+
 
 void wiog_wifi_actor_init() {
     cnt_no_response = 0;
@@ -642,7 +621,10 @@ void wiog_wifi_actor_init() {
 	my_uid = get_uid();	//Geräte-ID berechnen
 
 	//Wifi-Kanal-Scan
-	wiog_set_channel(wifi_channel);
+	wiog_set_channel(0);
+    cnt_no_response = 0;
+    cnt_no_response_serie = 0;
+
 	//actor sendet immer mit voller Leistung
 	ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(MAX_TX_POWER));
 }
@@ -677,6 +659,9 @@ bool is_dbls_fid(uint32_t fid) {
 
 //zentrale Funktion zum Setzen der Species
 void set_species(species_t sp) {
+	#ifdef DEBUG_X
+		if (sp != species) printf("Set Species: %d\n", sp);
+	#endif
 	species = sp;
 }
 

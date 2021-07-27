@@ -192,11 +192,14 @@ static void wiog_rx_processing_task(void *pvParameter) {
 				//Daten via UART an RPi-GW senden	A-Frame
 				//Datenblock entschlüsseln
 				uint8_t buf[evt.data_len]; //decrypt Data nicht größer als encrypted Data
-				bzero(buf, evt.data_len);
-				if (wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0)
-					//kompletten Daten-Payload decrypted an RPi
+				payload_t* ppl = (payload_t*)buf;
+				if ((wiog_decrypt_data(evt.pdata, buf, evt.data_len, evt.wiog_hdr.frameid) == 0) &&
+					//integrität des Datenblocks prüfen
+					(ppl->man.len <= MAX_DATA_LEN) &&
+					(ppl->man.crc16 == crc16((uint8_t*)&ppl->man.len, ppl->man.len-2)))
+						//kompletten Daten-Payload decrypted an RPi
 						send_uart_frame(buf, evt.data_len, 'A');
-				else logE("Dercrpt Error");
+				else logE("Payload-Error\n");
 			}
 		}	// Data To GW ------------------------------------------
 
@@ -232,7 +235,7 @@ void wiog_tx_processing_task(void *pvParameter) {
 
 	while ((xQueueReceive(wiog_tx_queue, &evt, portMAX_DELAY) == pdTRUE)) {
 
-		uint16_t tx_len = get_blocksize(evt.data_len, AES_KEY_SZ) + sizeof(wiog_header_t);
+		uint16_t tx_len = get_blocksize(evt.data_len) + sizeof(wiog_header_t);
 		uint8_t buf[tx_len];
 		bzero(buf, tx_len);
 
@@ -244,17 +247,7 @@ void wiog_tx_processing_task(void *pvParameter) {
 		memcpy(buf, &evt.wiog_hdr, sizeof(wiog_header_t));
 
 		if (evt.crypt_data) {
-			//Datenblock verschlüsseln
-			//CBC-AES-Key
-			uint8_t key[] = {AES_KEY};
-			// Frame-ID => 4 letzten Byres im Key
-			uint32_t u32 = evt.wiog_hdr.frameid;
-			key[28] = (uint8_t)u32;
-			key[29] = (uint8_t)(u32>>=8);
-			key[30] = (uint8_t)(u32>>=8);
-			key[31] = (uint8_t)(u32>>=8);
-
-			cbc_encrypt(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
+			wiog_encrypt_data(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, evt.wiog_hdr.frameid);
 		} else {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
 		}
@@ -290,6 +283,10 @@ void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid) {
 		logLV("Unbekanntes Gerät - UID: : ", uid);
 		return;
 	}
+	//unverschlüsselten Payload absichern
+	buf->man.len = len;
+	buf->man.crc16 = crc16((uint8_t*)&buf->man.len, len-2);
+
 	wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 	//Datenframes gehen nur an ACTOR
 	ptx_frame->wiog_hdr = wiog_get_dummy_header(ACTOR, GATEWAY);
@@ -300,11 +297,13 @@ void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid) {
 	ptx_frame->tx_max_repeat = 5;					//max Wiederholungen, ACK erwartet
 	ptx_frame->wiog_hdr.interval_ms = dib_get_interval_ms(uid, di->species);
 	ptx_frame->pdata = malloc(len);
+
 	memcpy(ptx_frame->pdata, buf, len);
 	ptx_frame->data_len = len;
 	ptx_frame->crypt_data = true;
 	ptx_frame->target_time = 0;
 	ptx_frame->h_timer = NULL;
+
 
 	uint32_t dts = esp_timer_get_time() - ts_ack;
 	if (dts > 20000) {
@@ -327,7 +326,6 @@ void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid) {
 //Eintragen der Management-Daten in den Payload
 //Aufrufer aktualisiert später die Anzahl der Datensätze
 void set_management_data (management_t* pMan) {
-	pMan->sid = SYSTEM_ID;
 	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
 	pMan->version = VERSION;
@@ -348,6 +346,8 @@ void broadcast_nib(node_info_block_t* pnib) {
 	int len_man = sizeof(management_t);
 	int len_nib = nib_get_size(pnib);
 
+
+
 	//wiog_header setzen
 	wiog_event_txdata_t tx_frame;
 	tx_frame.wiog_hdr = wiog_get_dummy_header(DUMMY, GATEWAY);
@@ -359,15 +359,19 @@ void broadcast_nib(node_info_block_t* pnib) {
 	tx_frame.tx_max_repeat = 0;		//keine Wiederholung = kein ACK erwartet
 	int len = len_nib + len_man;
 	tx_frame.pdata = malloc(len);
-	//ManagementData voranstellen (f. Auswertung SID)
+	//ManagementData voranstellen
 	management_t man;
 	set_management_data(&man);
 	memcpy(&tx_frame.pdata[0], &man, sizeof(management_t));
-
 	memcpy(&tx_frame.pdata[len_man], pnib, len_nib);
 	//Gesamt-Daten-Länge
 	tx_frame.data_len = len;
 	tx_frame.target_time = 0;
+
+	//unverschlüsselten Payload absichern
+	management_t* pman = (management_t*)tx_frame.pdata;
+	pman->len = len;
+	pman->crc16 = crc16((uint8_t*)&pman->len, len-2);
 
 	//Datenpaket in Tx-Queue stellen, queued BY COPY !
 	//data wird in tx_processing_task freigegeben
@@ -452,7 +456,7 @@ void app_main(void) {
 		payload_t pl;
 		bzero(&pl, sizeof(payload_t));
 		pl.ix = 0;
-		pl.man.sid = SYSTEM_ID;
+//		pl.man.sid = SYSTEM_ID;
 		pl.man.wifi_channel = wifi_channel;
 		pl.man.uid = 58227;						//!!!!!
 
