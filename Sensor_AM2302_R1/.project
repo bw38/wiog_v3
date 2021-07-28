@@ -23,5 +23,10 @@
 			<type>2</type>
 			<locationURI>PARENT-1-PROJECT_LOC/gadget/am2302</locationURI>
 		</link>
+		<link>
+			<name>ubat</name>
+			<type>2</type>
+			<locationURI>PARENT-1-PROJECT_LOC/gadget/ubat</locationURI>
+		</link>
 	</linkedResources>
 </projectDescription>

@@ -371,12 +371,16 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Frame senden
-			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+			esp_wifi_80211_tx(WIFI_IF_STA, buf, tx_len, false);
 			ts_tx = esp_timer_get_time();
-			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
+			if (evt.tx_max_repeat == 0) {
+				vTaskDelay(50*MS);
+				break;	//1x Tx ohne ACK
+			}
 			//warten auf Empfang eines ACK
 			if (xSemaphoreTake(ack_timeout_Semaphore, TX_REPEAT_INTERVAL) == pdTRUE) {
 				cnt_no_response_serie = 0;
+				vTaskDelay(50*MS);
 				break; //ACK empfangen -> Wiederholung abbrechen
 			}
 			//bei fehlendem ACK
@@ -587,11 +591,11 @@ void wiog_wifi_actor_init() {
 
 	//Rx-Queue -> Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
-	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 12, NULL);
+	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 8, NULL);
 
 	//Tx-Queue - Unterprogramme stellen zu sendende Daten in die Queue
 	wiog_tx_queue = xQueueCreate(WIOG_TX_QUEUE_SIZE, sizeof(wiog_event_txdata_t));
-	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 4096, NULL, 5, NULL);
+	xTaskCreate(wiog_tx_processing_task, "wiog_tx_task", 4096, NULL, 9, NULL);
 
 	ack_timeout_Semaphore = xSemaphoreCreateBinary();
 

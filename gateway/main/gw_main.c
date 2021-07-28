@@ -259,10 +259,14 @@ void wiog_tx_processing_task(void *pvParameter) {
 		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
 			//Frame senden
-			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
-			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
+			esp_wifi_80211_tx(WIFI_IF_STA, buf, tx_len, false);
+			if (evt.tx_max_repeat == 0) {
+				vTaskDelay(50*MS);
+				break;	//1x Tx ohne ACK
+			}
 			//warten auf Empfang eines ACK
 			if (xSemaphoreTake(ack_timeout_Semaphore, 50*MS) == pdTRUE) {
+				vTaskDelay(50*MS);
 				break; //ACK empfangen -> Wiederholung abbrechen
 			}
 

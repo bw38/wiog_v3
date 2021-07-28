@@ -12,7 +12,7 @@
 
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
-#include "../../wiog_include/wiog_wifi.h"
+#include "../../wiog_include/wiog_wifi_sensor.h"
 
 
 #include "../../gadget/am2302/am2302.h"
@@ -154,6 +154,7 @@ void app_main(void) {
 	while ((xQueueReceive(measure_response_queue, &flag, 200*MS) == pdTRUE)) {
 
 		if ((flag & RFLAG_UBAT) != 0){	//Ergebnis Batteriespannungsmessung
+			uint32_t Ubat_ADC_mV = ubat_get_result();
 			uint32_t ures = (int)((Ubat_ADC_mV + (Ubat_ADC_mV * UBAT_DIVIDER)));
 			add_entry_I32(&pl, dt_ubat_mv, 0, 0, ures);
 			#ifdef DEBUG_X
@@ -162,10 +163,11 @@ void app_main(void) {
 		}	// UBat
 		else
 		if ((flag & RFLAG_AM2302) != 0){	// DHT21
-			add_entry_I32(&pl, dt_am2302, 0, 0, am2302_temperature);
-			add_entry_I32(&pl, dt_am2302, 1, 0, am2302_humidity);
+			am2302_result_t res_am = am2302_get_result();
+			add_entry_I32(&pl, dt_am2302, 0, 0, res_am.temperature);
+			add_entry_I32(&pl, dt_am2302, 1, 0, res_am.humidity);
 			#ifdef DEBUG_X
-				printf("[%04d]DS18B20 Temp: %d | Humi: %d\n", now(), am2302_temperature, am2302_humidity);
+				printf("[%04d]DS18B20 Temp: %d | Humi: %d\n", now(), res_am.temperature, res_am.humidity);
 			#endif
 		}	// DHT21
 		flags &= ~flag;

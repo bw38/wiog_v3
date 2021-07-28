@@ -176,7 +176,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 				tx_pwr_delta_dB = 6;	//next cycle mit höherer Tx-Leistung
 			}
 			//Frame senden
-			esp_wifi_80211_tx(WIFI_IF_STA, &buf, tx_len, false);
+			esp_wifi_80211_tx(WIFI_IF_STA, buf, tx_len, false);
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK
 			//warten auf Empfang eines ACK
 			if (xSemaphoreTake(ack_timeout_Semaphore, TX_REPEAT_INTERVAL) == pdTRUE) {
@@ -265,7 +265,6 @@ void wiog_set_channel(uint8_t ch) {
 			//Tx-Frame in Tx-Queue stellen
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 					ESP_LOGW("Tx-Queue: ", "Scan fail");
-printf("Scan Channel: %d\n", ch);
 
 			vTaskDelay(50*MS);
 			if (rtc_wifi_channel != 0) {
