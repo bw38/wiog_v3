@@ -13,6 +13,8 @@
 #ifndef MAIN_INTERFACE_H_
 #define MAIN_INTERFACE_H_
 
+#define UID60717
+
 #define AM2302_GPIO_OWP		26
 #define AM2302_RTC_IO_OWP	7
 
@@ -20,6 +22,11 @@
 #define UBAT_DIV_GND		GPIO_NUM_32			//Spannungsteiler während Messung nach unten ziehen
 //#define UBAT_DIV_GND		-1	 				// -1 -> ohne Spannungsteiler
 #define UBAT_DIVIDER		22000/8200			//Einzelwiderstände gemessen
+
+//Chipabhängige Referenzspannung
+#ifdef UID60717
+	#define VREF			1125
+#endif
 
 #define LED_STATUS			GPIO_NUM_12			//Status - LED
 #define LED_STATUS_REG		IO_MUX_GPIO12_REG	//MUX-Reg

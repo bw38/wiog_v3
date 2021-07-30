@@ -115,20 +115,16 @@ void app_main(void) {
     	waked_up = true;
     }
 
-	LED_STATUS_INIT;
-	LED_STATUS_ON;
+//	LED_STATUS_INIT;
+//	LED_STATUS_ON;
 
 	//Ergebnis-Response-Queue
 	measure_response_queue = xQueueCreate(MEASURE_QUEUE_SIZE, sizeof(uint32_t));
 
 	//Batteriemessung, Mess- und Steuerport initialisieren
 	//ADC1-Chn / GPIO-GND Spannungsteiler, ohne = -1 / Anzahl Samples (100 => ca. 4.3ms)
-	ubat_init(UBAT_ADC_CHN, UBAT_DIV_GND, 100);
+	ubat_init(UBAT_ADC_CHN, UBAT_DIV_GND, 100, VREF);
 
-    //bei Erstinbetriebnahme eines Sensors (ESP32 Rev 01) kann hier die Vref in Sensor geschrieben werden
-	//ggf in sdkconfig TP-Values und VRef ausschalten, wenn vorcalibrierter Wert nicht passt
-	//vref kann auch über 1200 liegen
-	ubat_set_vref(1180);
 
 	//BME280 - I2C-Interface
 	esp_err_t err = bme280_i2c_master_init(BME280_I2C_MASTER_NUM, BME280_I2C_MASTER_SDA_IO, BME280_I2C_MASTER_SCL_IO, waked_up);

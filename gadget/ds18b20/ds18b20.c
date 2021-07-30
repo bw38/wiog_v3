@@ -5,12 +5,11 @@
  *      Author: joerg
  */
 
-
+#include "freertos/FreeRTOS.h"
 #include "driver/rtc_io.h"
 #include "../../wiog_include/wiog_data.h"
 #include "ds18b20.h"
 #include "ulp_main.h"
-
 
 void ds18b20_init(gpio_num_t owp1){
 	//DS18B20-Messung vorbereiten

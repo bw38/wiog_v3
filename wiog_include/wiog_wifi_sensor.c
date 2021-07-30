@@ -147,18 +147,6 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		memcpy(buf, &evt.wiog_hdr, sizeof(wiog_header_t));
 
 		if (evt.crypt_data) {
-/*
-			//Datenblock verschlüsseln
-			//CBC-AES-Key
-			uint8_t key[] = {AES_KEY};
-			// Frame-ID => 4 letzten Byres im Key
-			uint32_t u32 = evt.wiog_hdr.frameid;
-			key[28] = (uint8_t)u32;
-			key[29] = (uint8_t)(u32>>=8);
-			key[30] = (uint8_t)(u32>>=8);
-			key[31] = (uint8_t)(u32>>=8);
-			cbc_encrypt(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, key, sizeof(key));
-*/
 			wiog_encrypt_data(evt.pdata, &buf[sizeof(wiog_header_t)], evt.data_len, evt.wiog_hdr.frameid);
 		} else {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
@@ -350,10 +338,9 @@ void wiog_wifi_sensor_init() {
 
 	ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(rtc_tx_pwr));
 
+	my_uid = get_uid();	//Geräte-ID berechnen
 	//Kanal setzen oder Channel-Scan
 	wiog_set_channel(rtc_wifi_channel);
-
-	my_uid = get_uid();	//Geräte-ID berechnen
 }
 
 void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {

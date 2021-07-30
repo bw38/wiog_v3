@@ -18,17 +18,16 @@
 
 #include "../../wiog_include/wiog_data.h"
 
-
-#define DEBUG_VREF_NO	//Caliebrierungsverfahren bestimmen und URef an GPIO25 messen
+#define DEBUG_VREF	//Caliebrierungsverfahren bestimmen und URef an GPIO25 messen
 
 //Batteriemessung
 #define	UBAT_SAMPLES	100				//Messzyklen zur Rauschminderung
 #define MIN_VREF		1000			//lt Datenblatt
 #define MAX_VREF		1200			//dto
-#define DEFAULT_VREF	1100				//falls nicht in efuse und nicht selbst in NVS eingetragen
+#define DEFAULT_VREF	1100			//falls nicht in efuse und nicht selbst in NVS eingetragen
 #define ADC_ATTEN 		ADC_ATTEN_DB_0	//Abschwächer
 
-#define DEBUG_VREF_NO
+uint32_t dev_vref = 1100;
 
 esp_adc_cal_characteristics_t *padc_chars;
 SemaphoreHandle_t	UBat_Semaphore = NULL;
@@ -42,9 +41,6 @@ int	adc_mV;		//Messergebnis an ADC-Eingang in mV
 
 esp_adc_cal_value_t vref_cal_type;
 static uint32_t rflag;
-
-//Prototypen
-uint32_t nvs_get_vref();
 
 // Batteriespannung ---------------------------------------------------------------------------------
 
@@ -66,7 +62,8 @@ static void get_ubat_task(void * pvParameters)
     vTaskDelete(NULL);
 }
 
-void ubat_init(adc1_channel_t ch, gpio_num_t in_gnd, uint32_t spl) {
+void ubat_init(adc1_channel_t ch, gpio_num_t in_gnd, uint32_t spl, uint32_t vref) {
+	dev_vref = vref;
 	adc_chn = ch;
 	samples = spl;
 
@@ -84,9 +81,6 @@ void ubat_init(adc1_channel_t ch, gpio_num_t in_gnd, uint32_t spl) {
 // Port initialisieren und Task starten
 void ubat_start(uint32_t flag) {
 	rflag = flag;
-
-	uint32_t dev_vref = nvs_get_vref();
-	if ((dev_vref < 950) || (dev_vref > 1250)) dev_vref = DEFAULT_VREF;
 
 	adc1_config_width(ADC_WIDTH_BIT_12); 			//Sample-Breite
 	adc1_config_channel_atten(adc_chn, ADC_ATTEN);	//Abschwächer
@@ -109,7 +103,7 @@ void ubat_start(uint32_t flag) {
     } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
         printf("Two Point\n");
     } else {
-        printf("Default\n");
+        printf("Default VRef: %dmV\n", dev_vref);
 //        esp_err_t status = adc2_vref_to_gpio(GPIO_NUM_26);
         //Verzögerung zum linearen messen
 //        vTaskDelay(15000 / portTICK_PERIOD_MS);
@@ -123,30 +117,6 @@ extern uint32_t ubat_get_result() {
 	return adc_mV;
 }
 
-// --------------------------------------------------------------------
-
-uint32_t nvs_get_vref()	// < 1ms
-{
-  	uint32_t res = 0;
-   	nvs_handle hnvs;
-   	if (nvs_open("storage", NVS_READONLY, &hnvs) == ESP_OK)
-   	{
-   		if (nvs_get_u32(hnvs, "vref", &res) !=  ESP_OK) res = 0;
-   		nvs_close(hnvs);
-   	}
-   	return res;
-}
-
-
-void ubat_set_vref(uint32_t vref) // 3 ms
-{
-   	nvs_handle hnvs;
-   	if (nvs_open("storage", NVS_READWRITE, &hnvs) == ESP_OK)
-   	{
-   		nvs_set_u32(hnvs, "vref", vref);
-   		nvs_close(hnvs);
-   	}
-}
 
 
 
