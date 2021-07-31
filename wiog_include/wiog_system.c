@@ -269,11 +269,11 @@ void nvs_set_sysvar(uint8_t ix, int32_t value) // 3 ms
 // ------------------------------------------------------------------------
 
 // Time (Debug)
-#ifdef DEBUG_X
 int now(){
 	return esp_timer_get_time() / 1000;
 }
 
+#ifdef DEBUG_X
 void compare_set_get_tx_power() {
 	int8_t max = MAX_TX_POWER;
 	while (max >= MIN_TX_POWER) {

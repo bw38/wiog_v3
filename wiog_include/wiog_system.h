@@ -246,12 +246,13 @@ uint8_t nvs_get_wifi_channel();
 void nvs_set_wifi_channel(uint8_t ch);
 int32_t nvs_get_sysvar(uint8_t ix);
 void nvs_set_sysvar(uint8_t ix, int32_t value);
+int now();
 
 //Debug
 #ifdef DEBUG_X
 	void tstart(uint8_t ix );
 	int tstop(uint8_t ix);
-	int now();
+
 	void compare_set_get_tx_power();
 #endif
 

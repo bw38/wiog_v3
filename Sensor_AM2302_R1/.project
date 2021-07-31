@@ -19,14 +19,9 @@
 	</natures>
 	<linkedResources>
 		<link>
-			<name>am2302</name>
+			<name>gadget</name>
 			<type>2</type>
-			<locationURI>PARENT-1-PROJECT_LOC/gadget/am2302</locationURI>
-		</link>
-		<link>
-			<name>ubat</name>
-			<type>2</type>
-			<locationURI>PARENT-1-PROJECT_LOC/gadget/ubat</locationURI>
+			<locationURI>PARENT-1-PROJECT_LOC/gadget</locationURI>
 		</link>
 	</linkedResources>
 </projectDescription>
