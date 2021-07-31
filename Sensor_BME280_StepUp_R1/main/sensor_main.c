@@ -128,6 +128,8 @@ void app_main(void) {
 	esp_err_t err = bme280_i2c_master_init(BME280_I2C_MASTER_NUM, BME280_I2C_MASTER_SDA_IO, BME280_I2C_MASTER_SCL_IO, waked_up);
 	if (err == ESP_OK)
 		bme280_i2c_start(RFLAG_BME280);
+	else
+		printf("Error Init BME280: %d\n", err);
 
 	//Wifi-Initialisierung -----------------------------------------------
 	#ifdef DEBUG_X
@@ -186,16 +188,6 @@ void app_main(void) {
 				printf("[%04d]DS18B20 Temp: %d\n", now(), res.temperature);
 			#endif
 		}	// DB18B20
-/*		else
-		if ((flag & RFLAG_AM2302) != 0){	// DHT21
-			am2302_result_t res = am2302_get_result();
-			add_entry_I32(&pl, dt_am2302, 0, res.crc_check, res.temperature);
-			add_entry_I32(&pl, dt_am2302, 1, res.crc_check, res.humidity);
-			#ifdef DEBUG_X
-				printf("[%04d]DS18B20 Temp: %d | Humi: %d\n", now(), res.temperature, res.humidity);
-			#endif
-		}	// DHT21
-*/
 
 		else
 		if ((flag & RFLAG_BME280) != 0) {
@@ -223,7 +215,7 @@ void app_main(void) {
 	}
 
 	if (flags != 0)  { //Funktionsfehler
-
+		printf("Fehler Messung %d\n", flag);
 	}
 
 	//Send Data to GW

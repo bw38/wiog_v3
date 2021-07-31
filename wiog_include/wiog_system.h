@@ -12,7 +12,7 @@
  */
 
 
-#define DEBUG_X
+#define DEBUG_X_NO
 
 
 #include "esp_wifi.h"

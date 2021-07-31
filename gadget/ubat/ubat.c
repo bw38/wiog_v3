@@ -17,8 +17,8 @@
 #include "ubat.h"
 
 #include "../../wiog_include/wiog_data.h"
+#include "../../wiog_include/wiog_system.h"
 
-#define DEBUG_VREF	//Caliebrierungsverfahren bestimmen und URef an GPIO25 messen
 
 //Batteriemessung
 #define	UBAT_SAMPLES	100				//Messzyklen zur Rauschminderung
@@ -93,7 +93,7 @@ void ubat_start(uint32_t flag) {
 	xTaskCreate(get_ubat_task, "ubat", 1024, NULL, 2, NULL);
 
 
-#ifdef DEBUG_VREF
+#ifdef DEBUG_X
     //Characterize ADC at particular atten
     esp_adc_cal_characteristics_t *adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
     esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
