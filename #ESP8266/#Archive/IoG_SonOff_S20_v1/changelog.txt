@@ -1,0 +1,11 @@
+V0.1
+	26.04.2018
+		Übernahme Template aus IOG-Sensor 4
+		
+V1.2
+	29.04.2018		
+		erste lauffähig Version
+		
+V2.1
+	02.01.2019
+		Umstellung auf System 2.1
