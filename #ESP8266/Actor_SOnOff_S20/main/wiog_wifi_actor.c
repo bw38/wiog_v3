@@ -59,8 +59,7 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 
 	//nur Pakete an eigene UID bearbeiten
 	if ((memcmp(header->mac_to, &mac_actor, 6) !=0)	|| (header->uid != my_uid)) return;
-	//max Datenlänger (incl Header) im Sniffermode ESP8266
-printf("LEN: %d\n", len-sizeof(wiog_header_t));
+	//max Datenlänge (incl Header) im Sniffermode ESP8266
 	if (len > 112) return;	//max Paketlänge d. 8266 überschritten
 
 	wiog_event_rxdata_t frame;
