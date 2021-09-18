@@ -10,6 +10,7 @@
 #include "esp32/ulp.h"
 #include "soc/rtc.h"
 
+
 #include "../../wiog_include/wiog_system.h"
 #include "../../wiog_include/wiog_data.h"
 #include "../../wiog_include/wiog_wifi_sensor.h"
@@ -74,8 +75,6 @@ void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
 }
 
 void app_main(void) {
-
-	i2c_config_t conf;
 
 	version = VERSION;
 	revision = REVISION;
