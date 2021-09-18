@@ -149,7 +149,7 @@ int wiog_decrypt_data(uint8_t* encrypted, uint8_t* data, uint16_t len, uint32_t 
 uint16_t get_uid() {
     uint8_t umac[6];
     esp_wifi_get_mac(ESP_IF_WIFI_STA, umac);
-    return crc16_be(0, (uint8_t*) umac, 6);
+    return crc16_le(0, (uint8_t*) umac, 6);
 }
 
 //Grundgerüst eines WIOG-Headers

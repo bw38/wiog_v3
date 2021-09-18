@@ -8,7 +8,8 @@
 #ifndef MAIN_BME280_I2C_IF_H_
 #define MAIN_BME280_I2C_IF_H_
 
-#include "driver/i2c.h"
+#include "/home/joerg/Development/esp32/esp-idf/components/driver/include/driver/i2c.h"
+//#include "driver/i2c.h"
 #include "bme280.h"
 
 typedef struct {

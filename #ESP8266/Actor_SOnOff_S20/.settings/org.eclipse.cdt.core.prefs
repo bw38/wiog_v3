@@ -1,3 +1,8 @@
+doxygen/doxygen_new_line_after_brief=true
+doxygen/doxygen_use_brief_tag=false
+doxygen/doxygen_use_javadoc_tags=true
+doxygen/doxygen_use_pre_tag=false
+doxygen/doxygen_use_structural_commands=false
 eclipse.preferences.version=1
 environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1082629389/BATCH_BUILD/delimiter=\:
 environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1082629389/BATCH_BUILD/operation=append
@@ -7,3 +12,11 @@ environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1082629389/IDF_PAT
 environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1082629389/IDF_PATH/value=/home/joerg/esp/ESP8266_RTOS_SDK
 environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1082629389/append=true
 environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1082629389/appendContributed=true
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/BATCH_BUILD/delimiter=\:
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/BATCH_BUILD/operation=append
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/BATCH_BUILD/value=1
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/IDF_PATH/delimiter=\:
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/IDF_PATH/operation=replace
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/IDF_PATH/value=/home/joerg/esp/ESP8266_RTOS_SDK
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/append=true
+environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1865338430/appendContributed=true

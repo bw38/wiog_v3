@@ -75,6 +75,8 @@ void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
 
 void app_main(void) {
 
+	i2c_config_t conf;
+
 	version = VERSION;
 	revision = REVISION;
 

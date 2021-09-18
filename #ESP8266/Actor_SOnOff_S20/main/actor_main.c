@@ -53,7 +53,7 @@ printf("I: %d\n", i);
 				device_set_ns_state(pi32->value);
 			}
 			if (pi32->datatype == dt_timer_sek) {
-				device_set_ns_state(pi32->value);
+				device_set_ns_timer(pi32->value);
 			}
 			#ifdef DEBUG_X
 				printf("Rx - DT: %d | Ix: %d | Status: %d | Val: %d\n",
