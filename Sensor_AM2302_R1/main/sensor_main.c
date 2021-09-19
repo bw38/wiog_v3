@@ -10,18 +10,17 @@
 #include "esp32/ulp.h"
 #include "soc/rtc.h"
 
-#include "../../wiog_include/wiog_system.h"
-#include "../../wiog_include/wiog_data.h"
-#include "../../wiog_include/wiog_wifi_sensor.h"
+#include "wiog_include/wiog_system.h"
+#include "wiog_include/wiog_data.h"
+#include "wiog_include/wiog_wifi_sensor.h"
 
 
-#include "../../gadget/am2302/am2302.h"
-#include "../../gadget/ubat/ubat.h"
+#include "gadget/am2302/am2302.h"
+#include "gadget/ubat/ubat.h"
 
 #include "ulp_main.h"  //ulp_xxx.h wird automatisch generiert
 
 #include "interface.h"
-
 
 
 #define VERSION  3

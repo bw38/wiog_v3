@@ -13,11 +13,16 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
-
 #include "ubat.h"
 
 #include "../../wiog_include/wiog_data.h"
 #include "../../wiog_include/wiog_system.h"
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+	#define ADC_WIDTH ADC_WIDTH_BIT_12
+#elif CONFIG_IDF_TARGET_ESP32S2
+	#define ADC_WIDTH ADC_WIDTH_BIT_13
+#endif
 
 
 //Batteriemessung
@@ -82,12 +87,12 @@ void ubat_init(adc1_channel_t ch, gpio_num_t in_gnd, uint32_t spl, uint32_t vref
 void ubat_start(uint32_t flag) {
 	rflag = flag;
 
-	adc1_config_width(ADC_WIDTH_BIT_12); 			//Sample-Breite
+	adc1_config_width(ADC_WIDTH); 			//Sample-Breite
 	adc1_config_channel_atten(adc_chn, ADC_ATTEN);	//Abschwächer
 
 	//Characterize ADC
 	padc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-	vref_cal_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH_BIT_12, dev_vref, padc_chars);
+	vref_cal_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH, dev_vref, padc_chars);
 
 	//Task starten
 	xTaskCreate(get_ubat_task, "ubat", 1024, NULL, 2, NULL);

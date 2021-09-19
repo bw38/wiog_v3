@@ -10,16 +10,16 @@
 idf_component_register(
 	SRCS 
 		"sensor_main.c" 
-    	"../../wiog_include/wiog_system.c"
-    	"../../wiog_include/wiog_data.c"
-    	"../../wiog_include/wiog_wifi_sensor.c"
+    	"wiog_include/wiog_system.c"
+    	"wiog_include/wiog_data.c"
+    	"wiog_include/wiog_wifi_sensor.c"
 #    	
-		"../../gadget/ubat/ubat.c" 		
-		"../../gadget/ds18b20/ds18b20.c"
-#		"../../gadget/am2302/am2302.c"	
-		"../../gadget/bme280/bme280_i2c_if.c" "../../gadget/bme280/bme280.c"
-#		"bme280/bme280_spi_if.c" "bme280/bme280.c"	
-#		"bme680/bme680_i2c_if.c" "bme680/bme680.c"
+		"gadget/ubat/ubat.c" 		
+		"gadget/ds18b20/ds18b20.c"
+#		"gadget/am2302/am2302.c"	
+		"gadget/bme280/bme280_i2c_if.c" "gadget/bme280/bme280.c"
+#		"gadget/bme280/bme280_spi_if.c" "gadget/bme280/bme280.c"	
+#		"gadget/bme680/bme680_i2c_if.c" "gadget/bme680/bme680.c"
 #		"button/button.c"
 #		"ne555_level/ne555.c"
 		

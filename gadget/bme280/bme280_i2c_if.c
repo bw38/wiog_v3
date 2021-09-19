@@ -8,11 +8,12 @@
 //ESP32-I2C - Beispielcode:
 //https://github.com/espressif/esp-idf/blob/a20d02b7f196c407bc9f39b781e31a0a4f665968/examples/peripherals/i2c/i2c_self_test/main/i2c_example_main.c
 
-
+/*
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
 #include "driver/rtc_io.h"
+*/
 
 #include "bme280_i2c_if.h"
 #include "bme280_defs.h"

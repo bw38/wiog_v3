@@ -5,8 +5,8 @@ set(COMPONENT_PRIV_REQUIRES )
 set(COMPONENT_SRCS 
 	"gw_main.c"
 	"rs232.c"
-	"../../wiog_include/wiog_system.c"
-	"../../wiog_include/wiog_data.c"
+	"wiog_include/wiog_system.c"
+	"wiog_include/wiog_data.c"
 )
 set(COMPONENT_ADD_INCLUDEDIRS "")
 

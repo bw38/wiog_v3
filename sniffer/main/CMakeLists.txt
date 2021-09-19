@@ -4,7 +4,7 @@ set(COMPONENT_PRIV_REQUIRES )
 
 set(COMPONENT_SRCS 
 	"sniffer_main.c"
-	"../../wiog_include/wiog_system.c"
+	"wiog_include/wiog_system.c"
 )
 set(COMPONENT_ADD_INCLUDEDIRS "")
 

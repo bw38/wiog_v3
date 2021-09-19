@@ -4,9 +4,9 @@ set(COMPONENT_PRIV_REQUIRES )
 
 set(COMPONENT_SRCS 
 	"actor_main.c"
-	"../../wiog_include/wiog_system.c"
-	"../../wiog_include/wiog_data.c"
-	"../../wiog_include/wiog_wifi_actor.c"
+	"wiog_include/wiog_system.c"
+	"wiog_include/wiog_data.c"
+	"wiog_include/wiog_wifi_actor.c"
 	"pumpe.c"
 )
 set(COMPONENT_ADD_INCLUDEDIRS "")

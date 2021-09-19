@@ -13,9 +13,9 @@
 #include "nvs_flash.h"
 #include "string.h"
 
-#include "../../wiog_include/wiog_system.h"
-#include "../../wiog_include/wiog_data.h"
-#include "../../wiog_include/wiog_wifi_actor.h"
+#include "wiog_include/wiog_system.h"
+#include "wiog_include/wiog_data.h"
+#include "wiog_include/wiog_wifi_actor.h"
 
 #include "interface.h"
 

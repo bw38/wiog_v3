@@ -10,8 +10,8 @@
 #ifndef MAIN_STECKDOSE_NS_SOCKET_H_
 #define MAIN_STECKDOSE_NS_SOCKET_H_
 
-#include "../../wiog_include/wiog_system.h"
-#include "../../wiog_include/wiog_data.h"
+#include "wiog_include/wiog_system.h"
+#include "wiog_include/wiog_data.h"
 
 
 extern void device_init();

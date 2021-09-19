@@ -20,8 +20,6 @@
 
 #include "interface.h"
 #include "pumpe.h"
-#include "../../wiog_include/wiog_system.h"
-#include "../../wiog_include/wiog_data.h"
 
 
 typedef enum {
