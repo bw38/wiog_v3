@@ -1,0 +1,3 @@
+noch nicht an wiog_v3 angepasst.
+
+-> gadget/bme280/..
