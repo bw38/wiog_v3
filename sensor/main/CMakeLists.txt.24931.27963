@@ -1,0 +1,39 @@
+# ------------------------------------------------------------- 
+# Beinhaltet alle Module  der Sensor-Farm
+#
+# Anpassen an die zu verwendenden Module !!!!!
+# durch auskommentieren der nicht verwendeten Sensor-Module
+#
+# -------------------------------------------------------------
+
+
+idf_component_register(
+	SRCS 
+		"sensor_main.c" 
+    	"wiog_include/wiog_system.c"
+    	"wiog_include/wiog_data.c"
+    	"wiog_include/wiog_wifi_sensor.c"
+    	
+		"gadget/ubat/ubat.c" 		
+		
+	INCLUDE_DIRS 
+		""
+		
+	REQUIRES soc nvs_flash ulp driver esp_adc_cal
+)
+
+# ULP support additions to component CMakeLists.txt.
+set(ulp_app_name ulp_${COMPONENT_NAME})
+
+# .S - Files im ulp-Folder unterhalb von main
+# nur eine ULP-Auswahl möglich 
+set(ulp_s_sources 
+		"ulp/esp32_fsm_am2302.S"
+)
+
+# Module, mit Zugriff auf ULP-Variablen
+set(ulp_exp_dep_srcs 
+		"sensor_main.c"
+)
+
+ulp_embed_binary(${ulp_app_name} ${ulp_s_sources} ${ulp_exp_dep_srcs})
