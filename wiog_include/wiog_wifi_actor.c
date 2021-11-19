@@ -603,11 +603,11 @@ void wiog_wifi_actor_init() {
 	xTaskCreate(wiog_nib_spread_task, "wiog_nib_spread_task", 4096, NULL, 2, NULL);
 	xTaskCreate(wiog_snr_info_task, "wiog_snr_info_task", 4096, NULL, 2, NULL);
 
-
+	wifi_country_t country = wifi_country_de;
     esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
-    ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) );
+    ESP_ERROR_CHECK( esp_wifi_set_country(&country) );
     ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_LR));

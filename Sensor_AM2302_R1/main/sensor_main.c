@@ -28,7 +28,7 @@
 
 //Measure-Response-Flags 2^n
 #define RFLAG_UBAT		1
-#define RFLAG_DS18B20	2
+#define RFLAG_DS18B20_FSM	2
 #define RFLAG_AM2302	4
 #define RFLAG_BME280	8
 

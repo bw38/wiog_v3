@@ -417,10 +417,11 @@ void app_main(void) {
     //Create a task to handler UART event from ISR
     xTaskCreate(rx_uart_event_task, "rx_uart_event_task", 8192, NULL, 3, NULL);
 
+    wifi_country_t country = wifi_country_de;
     esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
    	ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
-	ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) ); // set country for channel range [1 .. 13]
+	ESP_ERROR_CHECK( esp_wifi_set_country(&country) ); // set country for channel range [1 .. 13]
 	ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_LR));
@@ -552,7 +553,7 @@ uint32_t dib_get_def_sleep_time_ms(uint8_t species){
 	switch (species) {
 		case SENSOR:
 			if (dib.def_sensor_interval_ms > 0) return dib.def_sensor_interval_ms;
-			else return SENSOR_MIN_SLEEP_TIME_MS;
+			else return SENSOR_MIN_SLEEP_TIME_MS *2 ;
 			break;
 		case ACTOR:
 			if (dib.def_actor_interval_ms  > 0) return dib.def_actor_interval_ms;

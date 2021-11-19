@@ -128,6 +128,7 @@ void app_main(void) {
 	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 	ESP_ERROR_CHECK( esp_wifi_start() );
 	esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+	printf("Sniff on Channel: %d\n", channel);
 
 	wifi_promiscuous_filter_t filter;
 	filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;

@@ -254,6 +254,9 @@ void wiog_set_channel(uint8_t ch) {
 			if (xQueueSend(wiog_tx_queue, &tx_frame, portMAX_DELAY) != pdTRUE)
 					ESP_LOGW("Tx-Queue: ", "Scan fail");
 
+			#ifdef DEBUG_X
+			printf("Scan ch: %d\n", ch);
+			#endif
 			vTaskDelay(50*MS);
 			if (rtc_wifi_channel != 0) {
 				rtc_no_response_serie = 0;
@@ -269,14 +272,18 @@ void wiog_set_channel(uint8_t ch) {
 			if (rtc_cnt_no_scan   > 6) sleeptime_ms = 60*60*1000;
 		} else {
 			ESP_ERROR_CHECK( esp_wifi_set_channel(rtc_wifi_channel, WIFI_SECOND_CHAN_NONE));
-printf("Set Channel: %d\n", rtc_wifi_channel);
-			sleeptime_ms = 5*1000;	//1. Ruhezeit
+			#ifdef DEBUG_X
+			printf("Set Channel: %d\n", rtc_wifi_channel);
+			#endif
+			sleeptime_ms = 1*1000;	//1. Ruhezeit
 		}
 
 		esp_sleep_enable_timer_wakeup(sleeptime_ms * 1000);
 		rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
 		esp_deep_sleep_disable_rom_logging();
-printf("Sleep for %dms\n", sleeptime_ms);
+		#ifdef DEBUG_X
+		printf("first sleep for %dms\n", sleeptime_ms);
+		#endif
 		esp_deep_sleep_start();
 
 	} else {
@@ -306,7 +313,6 @@ void wiog_wifi_sensor_init() {
     //bei wiederholt fehlendem Response -> ChannelScan erzwingen
     if (rtc_no_response_serie > 1) rtc_wifi_channel = 0;
 
-
 	//Rx-Queue -> Low_Prio Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));
 	xTaskCreate(wiog_rx_processing_task, "wiog_rx_task", 4096, NULL, 12, NULL);
@@ -320,14 +326,16 @@ void wiog_wifi_sensor_init() {
 	//vor DeepSleep
 	goto_sleep_Semaphore = xSemaphoreCreateBinary();
 
+	wifi_country_t country = wifi_country_de;
 	esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
-    ESP_ERROR_CHECK( esp_wifi_set_country(&wifi_country_de) );
+    ESP_ERROR_CHECK( esp_wifi_set_country(&country) );
     ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_LR));
-	esp_wifi_set_promiscuous(true);
+
+    esp_wifi_set_promiscuous(true);
 	esp_wifi_set_promiscuous_rx_cb(&wiog_receive_packet_cb);
 	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 	ESP_ERROR_CHECK(esp_wifi_start());
@@ -382,8 +390,8 @@ void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {
 	rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
     esp_deep_sleep_disable_rom_logging();
 	rtc_onTime += esp_timer_get_time() / 1000;
-    #ifdef DEBUG_X
-    	printf("[%04d]Goto DeepSleep for %dms\n", now(), rtc_interval_ms);
-	#endif
+
+   	printf("[%04d]Goto DeepSleep for %.3fs\n", now(), rtc_interval_ms / 1000.0);
+
 	esp_deep_sleep_start();
 }

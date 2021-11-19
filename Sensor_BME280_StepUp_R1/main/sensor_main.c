@@ -33,7 +33,7 @@
 
 //Measure-Response-Flags 2^n
 #define RFLAG_UBAT		1
-#define RFLAG_DS18B20	2
+#define RFLAG_DS18B20_FSM	2
 #define RFLAG_AM2302	4
 #define RFLAG_BME280	8
 
@@ -147,7 +147,7 @@ void app_main(void) {
 	//vTaskDelay(1500*MS);			//Test ADC-Kalibrierung
 
 	//Temp-Messung in ULP bereits erledigt, hier nur RFlag in die Response-Queue stellen
-	ds18b20_start(RFLAG_DS18B20);
+	ds18b20_start(RFLAG_DS18B20_FSM);
 
 	//Temp-Messung in ULP bereits erledigt, hier nur RFlag in die Response-Queue stellen
 	//am2302_start(RFLAG_AM2302);
@@ -165,7 +165,7 @@ void app_main(void) {
 
 	//Maske aller Gadget-Flags
 	uint32_t flags = RFLAG_UBAT |
-					 RFLAG_DS18B20 |
+					 RFLAG_DS18B20_FSM |
 					 RFLAG_BME280;
 
 	uint32_t flag = 0;	//in der Queue zurückgeliefertes Einzelflag
@@ -181,7 +181,7 @@ void app_main(void) {
 		}	// UBat
 
 		else
-		if ((flag & RFLAG_DS18B20) != 0){	//ds18b20-Ergebnis
+		if ((flag & RFLAG_DS18B20_FSM) != 0){	//ds18b20-Ergebnis
 			ds18b20_result_t res = ds18b20_get_result();
 			add_entry_I32(&pl, dt_ds18b20, 0, res.status, res.temperature);
 			#ifdef DEBUG_X

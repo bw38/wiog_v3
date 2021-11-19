@@ -14,8 +14,11 @@ typedef struct {
 	int8_t   crc_check;
 } am2302_result_t;
 
+
+
+/*
 extern void am2302_init();
 extern void am2302_start(uint32_t flag);
 extern am2302_result_t am2302_get_result();
-
+*/
 #endif /* MAIN_AM2302_AM2302_H_ */

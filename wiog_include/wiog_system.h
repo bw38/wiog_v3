@@ -12,11 +12,10 @@
  */
 
 
-#define DEBUG_X_NO
+#define DEBUG_X
 
 
 #include "esp_wifi.h"
-
 
 #define MS 1/portTICK_PERIOD_MS	//1 Tick je 10ms
 
@@ -81,7 +80,7 @@ static const wifi_country_t wifi_country_de = {
 		.cc="DE",
 		.schan=1,
 		.nchan=13,
-		.max_tx_power = MAX_TX_POWER,
+		.max_tx_power=MAX_TX_POWER,
 		.policy=WIFI_COUNTRY_POLICY_AUTO
 };
 
@@ -247,6 +246,7 @@ void nvs_set_wifi_channel(uint8_t ch);
 int32_t nvs_get_sysvar(uint8_t ix);
 void nvs_set_sysvar(uint8_t ix, int32_t value);
 int now();
+int64_t tStart;
 
 //Debug
 #ifdef DEBUG_X

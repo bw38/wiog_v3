@@ -82,9 +82,18 @@ temp_threshold:
 ncycles_force_wake:
 	.long 0
 
+	.global cycles	//16bit-Zähler ulp_cycles
+cycles:
+	.long 0
+
 //Fehlerzählung CRC, optionale Auswertung
-	.global cnt_crc_err
-cnt_crc_err:
+	.global crc_err
+crc_err:
+	.long 0
+
+//Datenport - Dummy Kompatibilität mit RISCV
+	.global owp
+owp:
 	.long 0
 
 //zuletzt gesendeter Wert
@@ -108,6 +117,7 @@ scratchpad:		// Return 9 Bytes of data after an 0xBE command.
 	.text
 	.global entry
 entry:
+
 	//Co-Programm bei 1.Aufruf sofort in Halt schicken (ohne Wake !)
 	move R1, first_run	//first_run nach Initialisierung == 0
 	ld   R0, R1, 0
@@ -119,6 +129,12 @@ entry:
 start:
 	SET_PIN_HIGH _STEPUP	//Regler hochtasten
 	wait 64000		//8ms Einschwingzeit
+
+	//Cycle-Counter hochzählen
+	move R1, cycles
+	ld	 R0, R1, 0
+	add  R0, R0, 1
+	st	 R0, R1, 0
 
 	SET_MODE_INPUT _OWP
 
@@ -224,7 +240,7 @@ crc8loop:
 	jump crc_ok, EQ			//jumo if ok
 
 	//CRC-Fehlerzahähler +1 (max 16bit)
-	move r1, cnt_crc_err
+	move r1, crc_err
 	ld   r0, r1, 0
 	add  r0, r0, 1
 	st   r0, r1, 0
@@ -259,14 +275,14 @@ crc_ok:
 	sub  R3, R0, R3			//R3 = aktueller Wert - unterer Grenzwert -> OV ?
 	jump exit_wake, OV
 
-exit:
-	//Zwangsaufweckung nach n Messvorgängen
+    //Zwangsaufweckung nach n Messvorgängen
 	move R1, ncycles_force_wake
 	ld   R0, R1, 0
 	and  R0, R0, 0xFF		//Wert auf 255 begrenzen
-	jump exit_wake, EQ		//Zwangspunkt erreicht, Host muss Wert neu setzen
-	sub  R0, R0, 1			//Zyklenzähler zurückschreiben
-	st   R0, R1, 0
+	jump exit_wake, EQ		//Wert ist bereits 0
+	sub  R0, R0, 1			//cnt -= 1
+	jump exit_wake, EQ		//Zwangspunkt erreicht
+	st   R0, R1, 0			//Zyklenzähler zurückschreiben
 	jump exit_halt
 
 exit_wake:

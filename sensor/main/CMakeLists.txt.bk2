@@ -15,18 +15,18 @@ idf_component_register(
     	"wiog_include/wiog_wifi_sensor.c"
 #    	
 		"gadget/ubat/ubat.c" 		
-		"gadget/ds18b20/ds18b20.c"
 #		"gadget/am2302/am2302.c"	
-		"gadget/bme280/bme280_i2c_if.c" "gadget/bme280/bme280.c"
-#		"gadget/bme280/bme280_spi_if.c" "gadget/bme280/bme280.c"	
+#		"gadget/bme280/bme280_i2c_if.c" "gadget/bme280/BME280_driver-master/bme280.c"
 #		"gadget/bme680/bme680_i2c_if.c" "gadget/bme680/bme680.c"
+#		"gadget/sht31/sht31.c"
+#		"gadget/shtc3/shtc3_i2c_if.c"
 #		"button/button.c"
 #		"ne555_level/ne555.c"
 		
 	INCLUDE_DIRS 
 		""
 		
-#	REQUIRES soc nvs_flash ulp
+	REQUIRES soc nvs_flash ulp driver esp_adc_cal
 )
 
 # ULP support additions to component CMakeLists.txt.
@@ -35,8 +35,12 @@ set(ulp_app_name ulp_${COMPONENT_NAME})
 # .S - Files im ulp-Folder unterhalb von main
 # nur eine ULP-Auswahl möglich 
 set(ulp_s_sources 
-		"ulp/ds18b20.S"
-#		"ulp/am2302_serialbus.S"
+#		"ulp/ds18b20.S"
+#		"ulp/esp32s2_riscv_ds18b20.c"
+#       "ulp/esp32s2_riscv_sht31.c"
+       "ulp/riscv_bme280/riscv_bme280_i2c_if.c" 
+       "ulp/riscv_bme280/BME280_driver-master/bme280.c"
+#		"ulp/esp32_fsm_am2302.S"
 #		"button/ulp/button.S"
 #		"stepup/ulp/stepup.S"
 #		"ne555_level/ulp/ds18b20.S"
@@ -46,7 +50,6 @@ set(ulp_s_sources
 set(ulp_exp_dep_srcs 
 		"sensor_main.c"
 #		"am2302/am2302.c"
-		"ds18b20.c"
 #		"button.c"
 #		"ne555_level/ne555.c"
 )

@@ -270,15 +270,15 @@ void nvs_set_sysvar(uint8_t ix, int32_t value) // 3 ms
 
 // Time (Debug)
 int now(){
-	return esp_timer_get_time() / 1000;
+	return (esp_timer_get_time() - tStart) / 1000;
 }
 
-#ifdef DEBUG_X
-void compare_set_get_tx_power() {
+#ifdef DEBUG_Xx
+void compare_set_get_tx_powerx() {
 	int8_t max = MAX_TX_POWER;
 	while (max >= MIN_TX_POWER) {
 		ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(max));
-		vTaskDelay(10*MS);
+		vTaskDelay(10 * MS);
 		int8_t maxpwr;
 		esp_wifi_get_max_tx_power(&maxpwr);
 		printf("Set Tx-Power: %.2f dBm, %d->%d\n", maxpwr *0.25, max, maxpwr);

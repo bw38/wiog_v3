@@ -13,9 +13,6 @@
 
 #include "wiog_system.h"
 
-#define MEASURE_QUEUE_SIZE 32
-xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
-
 #define MAX_DATA_LEN 1024				//maximale Payload-Datenlänge
 
 /*
@@ -45,6 +42,7 @@ typedef enum {
 	dt_am2302   = 8,
 	dt_bitmask  = 9,
 	dt_timer_sek= 10,
+	dt_sht3x	= 11,
 
 	dt_runtime_ms = 21,
 	dt_cycle   = 22,

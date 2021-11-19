@@ -15,8 +15,10 @@
 
 #include "ubat.h"
 
-#include "../../wiog_include/wiog_data.h"
-#include "../../wiog_include/wiog_system.h"
+//#include "../../wiog_include/wiog_data.h"
+//#include "../../wiog_include/wiog_system.h"
+
+#define DEBUG_X
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 	#define ADC_WIDTH ADC_WIDTH_BIT_12
@@ -25,17 +27,15 @@
 #endif
 
 
-//Batteriemessung
-#define	UBAT_SAMPLES	100				//Messzyklen zur Rauschminderung
-#define MIN_VREF		1000			//lt Datenblatt
-#define MAX_VREF		1200			//dto
 #define DEFAULT_VREF	1100			//falls nicht in efuse und nicht selbst in NVS eingetragen
 #define ADC_ATTEN 		ADC_ATTEN_DB_0	//Abschwächer
 
 uint32_t dev_vref = 1100;
 
 esp_adc_cal_characteristics_t *padc_chars;
-SemaphoreHandle_t	UBat_Semaphore = NULL;
+
+static uint32_t rflag = 0;
+static QueueHandle_t hResponseQueue;
 
 uint32_t samples;
 adc1_channel_t adc_chn;	//Messeingang
@@ -63,7 +63,7 @@ static void get_ubat_task(void * pvParameters)
 	if (gpio_gnd < GPIO_NUM_MAX) gpio_set_level(gpio_gnd, 1);
 
 	adc_mV = esp_adc_cal_raw_to_voltage(uadc / samples, padc_chars); //Spannung mV am Messeingang
-	xQueueSend(measure_response_queue, &rflag, portMAX_DELAY);	//Messung freigeben
+	xQueueSend(hResponseQueue, &rflag, portMAX_DELAY);	//Messung freigeben
     vTaskDelete(NULL);
 }
 
@@ -84,7 +84,8 @@ void ubat_init(adc1_channel_t ch, gpio_num_t in_gnd, uint32_t spl, uint32_t vref
 }
 
 // Port initialisieren und Task starten
-void ubat_start(uint32_t flag) {
+void ubat_start(QueueHandle_t hQ, uint32_t flag) {
+	hResponseQueue = hQ;
 	rflag = flag;
 
 	adc1_config_width(ADC_WIDTH); 			//Sample-Breite
@@ -97,11 +98,10 @@ void ubat_start(uint32_t flag) {
 	//Task starten
 	xTaskCreate(get_ubat_task, "ubat", 1024, NULL, 2, NULL);
 
-
 #ifdef DEBUG_X
     //Characterize ADC at particular atten
     esp_adc_cal_characteristics_t *adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
+    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH, DEFAULT_VREF, adc_chars);
     //Check type of calibration value used to characterize ADC
     if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
         printf("eFuse Vref\n");
@@ -118,7 +118,7 @@ void ubat_start(uint32_t flag) {
  //   return dev_vref;
 }
 
-extern uint32_t ubat_get_result() {
+uint32_t ubat_get_result() {
 	return adc_mV;
 }
 
