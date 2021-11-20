@@ -28,8 +28,9 @@ set(ulp_app_name ulp_${COMPONENT_NAME})
 #    Files should be placed into a separate directory (in this case, ulp/),
 #    which should not be added to COMPONENT_SRCS.
 set(ulp_riscv_S_sources 
-		"ulp/riscv_bme280/riscv_bme280_i2c_if.c"  
-		"ulp/riscv_bme280/BME280_driver-master/bme280.c"
+#		"ulp/riscv_bme280/riscv_bme280_i2c_if.c"  
+#		"ulp/riscv_bme280/BME280_driver-master/bme280.c"
+		"ulp/esp32s2_riscv_sht31.c"
 )
 
 #

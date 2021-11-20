@@ -131,9 +131,9 @@
 #endif	//--------------------------------------------------------
 
 
-#ifdef UID45425x				// Testboard ESP32S2 Plug - RISC-V DS18B20 / SHT31 Main ----------------
+#ifdef UID45425				// Testboard ESP32S2 Plug - RISC-V DS18B20 / SHT31 Main ----------------
 #define RFLAG_UBAT			1
-#define RFLAG_DS18B20_RISCV	2
+//#define RFLAG_DS18B20_RISCV	2
 #define RFLAG_SHT31			4
 
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
@@ -170,7 +170,7 @@
 
 #endif	//--------------------------------------------------------
 
-#ifdef UID45425				// Testboard ESP32S2 Plug - RISC-V BME280 Main ----------------
+#ifdef UID45425x			// Testboard ESP32S2 Plug - RISC-V BME280 Main ----------------
 #include "gadget/ubat/ubat.h"
 
 #define RFLAG_UBAT			1
