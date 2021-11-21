@@ -12,10 +12,10 @@
 
 //Geräteauswahl (nur eine UID zulässig -----------------------
 //#define UID40319	// ESP32 - TestPlug, div Sensoren
-//#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
+#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
 //#define UID27963	// ESP32 - AM2302 - Rohrmelder or, Li-Bat Direktversorgung
 //#define UID24931	// ESP32 - AM2302 - Rohrmelder gr, Li-Bat Direktversorgung
-#define UID45425	// ESP32S2 - TestPlug, div Sensoren
+//#define UID45425b	// ESP32S2 - TestPlug, div Sensoren
 
 
 // -----------------------------------------------------------
@@ -60,6 +60,8 @@
 #endif	//--------------------------------------------------------
 
 #ifdef UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
+#undef DEBUG_X
+
 #define RFLAG_UBAT			1
 #define RFLAG_DS18B20_FSM	2
 #define RFLAG_BME280		4
@@ -77,6 +79,9 @@
 #define UBAT_DIVIDER		33000/8200
 #define VREF				1095
 
+#define TEMP_THRESHOLD		0.25				// 1/10°C -Schritte
+#define MAX_FORCE_REPORT	0					// nach max x Messungen aufwecken
+
 #define	USE_I2C_MASTER
 #define	I2C_MASTER_NUM		I2C_NUM_0
 #define I2C_MASTER_FREQ_HZ	100000	//Frequenz in Hz, max 1MHz
@@ -90,8 +95,8 @@
 
 //Dummies f. Kompatibilität
 //Status-LED
-#define LED_STATUS			GPIO_NUM_13			//Status - LED
-#define LED_STATUS_REG		IO_MUX_GPIO13_REG	//MUX-Reg
+//#define LED_STATUS			GPIO_NUM_13			//Status - LED
+//#define LED_STATUS_REG		IO_MUX_GPIO13_REG	//MUX-Reg
 
 
 
@@ -100,12 +105,13 @@
 
 #if defined UID27963 || defined UID24931		// ESP32 - AM2302 - Rohrmelder or/gr, Li-Bat Direktversorgung
 #undef DEBUG_X									//unterdrückt die meisten UART-Ausgaben
+
 #define RFLAG_UBAT			1
 #define RFLAG_AM2302_FSM	2
 
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
 
-//OneWirePort DS18B20
+//OneWirePort Am2302
 #define	USE_ULP_FSM
 #define AM2302_GPIO_OWP		26
 #define AM2302_RTC_IO_OWP	7
@@ -131,9 +137,9 @@
 #endif	//--------------------------------------------------------
 
 
-#ifdef UID45425				// Testboard ESP32S2 Plug - RISC-V DS18B20 / SHT31 Main ----------------
+#ifdef UID45425a				// Testboard ESP32S2 Plug - RISC-V DS18B20 / SHT31 Main ----------------
 #define RFLAG_UBAT			1
-//#define RFLAG_DS18B20_RISCV	2
+#define RFLAG_DS18B20_RISCV	2
 #define RFLAG_SHT31			4
 
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
@@ -170,7 +176,7 @@
 
 #endif	//--------------------------------------------------------
 
-#ifdef UID45425x			// Testboard ESP32S2 Plug - RISC-V BME280 Main ----------------
+#ifdef UID45425b			// Testboard ESP32S2 Plug - RISC-V BME280 Main ----------------
 #include "gadget/ubat/ubat.h"
 
 #define RFLAG_UBAT			1
@@ -193,6 +199,30 @@
 #define I2C_MASTER_SDA_IO 	8
 #define I2C_MASTER_SCL_IO 	9
 
+#endif	//--------------------------------------------------------
+
+
+#ifdef UID45425c			// Testboard ESP32S2 Plug - RISC-V SHT31 --------------------------------
+#include "gadget/ubat/ubat.h"
+
+#define RFLAG_UBAT			1
+#define RFLAG_SHT31_RISCV	2
+
+#define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
+
+#define TEMP_THRESHOLD		0.25	//delta °C
+#define HUMI_THRESHOLD		2		//delta %
+#define MAX_FORCE_REPORT	0		//nach x Messung main spätestens wecken
+
+#define UBAT_ADC_CHN		ADC1_CHANNEL_3		//GPIO 4 Messeingang
+//#define UBAT_DIV_GND		GPIO_NUM_xx			//Spannungsteiler während Messung nach unten ziehen
+#define UBAT_DIV_GND		-1	 				// -1 -> ohne Spannungsteiler
+#define UBAT_DIVIDER		227500/39900
+#define VREF				1100				//Dummy - 2Point
+
+#define	USE_ULP_RISCV
+#define I2C_MASTER_SDA_IO 	8
+#define I2C_MASTER_SCL_IO 	9
 #endif	//--------------------------------------------------------
 
 

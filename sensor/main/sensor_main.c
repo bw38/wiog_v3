@@ -10,29 +10,37 @@
 #include "driver/rtc_io.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
-
 #include "esp32s2/ulp_riscv.h"
 
 #include "wiog_include/wiog_system.h"
-
 #include "wiog_include/wiog_data.h"
 #include "wiog_include/wiog_wifi_sensor.h"
-/*
-#include "gadget/ds18b20/ds18b20.h"
-#include "gadget/am2302/am2302.h"
-#include "gadget/ubat/ubat.h"
-#include "gadget/bme280/bme280_i2c_if.h"
-#include "gadget/sht31/sht31.h"
-#include "gadget/shtc3/shtc3_i2c_if.h"
-*/
+
 #include "ulp_main.h"  //ulp_xxx.h wird automatisch generiert
 
 #include "interface.h"
 
+//Gerätesprzifische Header f. Mainprocess
+#ifdef RFLAG_UBAT
+#include "gadget/ubat/ubat.h"
+#endif
+#ifdef RFLAG_BME280
+#include "gadget/bme280/bme280_i2c_if.h"
+#endif
+#ifdef RFLAG_SHT31
+#include "gadget/sht31/sht31.h"
+#endif
+#ifdef RFLAG_SHTC3
+#include "gadget/shtc3/shtc3_i2c_if.h"
+#endif
+
+
+#ifdef USE_STATUS_LED
 //Status-LED
 #define LED_STATUS_INIT 	PIN_FUNC_SELECT(LED_STATUS_REG, PIN_FUNC_GPIO);	gpio_set_direction(LED_STATUS, GPIO_MODE_OUTPUT)
 #define LED_STATUS_ON		gpio_set_level(LED_STATUS, 1)
 #define LED_STATUS_OFF		gpio_set_level(LED_STATUS, 0)
+#endif
 
 #define VERSION  3
 #define REVISION 0
@@ -101,6 +109,9 @@ void init_stepup_ctrl(void)
    	rtc_gpio_set_direction(pwr_ctrl, RTC_GPIO_MODE_OUTPUT_ONLY);
    	rtc_gpio_pullup_dis(pwr_ctrl);
    	rtc_gpio_pulldown_en(pwr_ctrl);
+   	//Stepup-Regler hochtasten nach allgem. Reset
+   	//nach DeepSleep bereits oben durch ULP / Wakeup-Stub
+   	rtc_gpio_set_level(pwr_ctrl, 1);
 }
 #endif
 
@@ -246,6 +257,9 @@ void app_main(void) {
 		rtc_gpio_pulldown_dis(GPIO_DS18B20_OWP);
 		rtc_gpio_hold_dis(GPIO_DS18B20_OWP);
 	}
+	//bedingtes wakeup
+	ulp_temp_threshold = TEMP_THRESHOLD * 16;
+	ulp_ncycles_force_wake = MAX_FORCE_REPORT;
 	//Temp-Messung in ULP bereits erledigt,  nur RFlag in die Response-Queue stellen
 	flags |=  RFLAG_DS18B20_FSM;
 	uint32_t f_ds18b20 = RFLAG_DS18B20_FSM;
@@ -321,11 +335,11 @@ void app_main(void) {
 	#endif
 
 	#ifdef RFLAG_SHT31_RISCV
-	ulp_set_heater = 0;	//	1 => testweise einschalten
-	ulp_set_mode = 1;	//  0-Low, 1-Medium, 2-High
-	ulp_set_force_wake = MAX_FORCE_REPORT;
-	ulp_set_thres_temp = TEMP_THRESHOLD * 100;
-	ulp_set_thres_humi = HUMI_THRESHOLD * 100;
+	ulp_sht31_set_heater = 0;	//	1 => testweise einschalten
+	ulp_sht31_set_mode = 1;	//  0-Low, 1-Medium, 2-High
+	ulp_set_sht31_force_wake = MAX_FORCE_REPORT;
+	ulp_set_sht31_thres_temp = TEMP_THRESHOLD * 100;
+	ulp_set_sht31_thres_humi = HUMI_THRESHOLD * 100;
 	ulp_sht31_sda = I2C_MASTER_SDA_IO;
 	ulp_sht31_scl = I2C_MASTER_SCL_IO;
 	flags |=  RFLAG_SHT31_RISCV;
@@ -393,12 +407,11 @@ void app_main(void) {
 
 		#ifdef RFLAG_DS18B20_FSM
 		if ((flag & RFLAG_DS18B20_FSM) != 0){	//ds18b20-Ergebnis
-			ds18b20_result_t res;
-			res.temperature = (((int32_t)(ulp_temp_raw) & UINT16_MAX)*100) / 16.0;
-			res.status = ulp_crc_err;
-			add_entry_I32(&pl, dt_ds18b20, 0, res.status, res.temperature);
+			int32_t temperature = (((int32_t)(ulp_temp_raw) & UINT16_MAX)*100) / 16.0;
+			int8_t status = ulp_crc_err;
+			add_entry_I32(&pl, dt_ds18b20, 0, status, temperature);
 			#ifdef DEBUG_X
-			printf("[%04d]DS18B20 Temp: %.2f°C\n", now(), res.temperature / 100.0);
+			printf("[%04d]DS18B20 Temp: %.2f°C\n", now(), temperature / 100.0);
 			#endif
 		}	// DB18B20
 		#endif
@@ -415,21 +428,24 @@ void app_main(void) {
 
 		#ifdef RFLAG_AM2302_FSM
 		if ((flag & RFLAG_AM2302_FSM) != 0){	// DHT21
-			am2302_result_t res;
-			res.temperature = ulp_temperature & 0xFFFF;	//10 * n°C
-			res.humidity    = ulp_humidity & 0xFFFF;	//10 * n%
-			res.crc_check = ((res.temperature >> 8 ) + (res.temperature & 0xFF) +
-				    (res.humidity >> 8 ) + (res.humidity & 0xFF)) -
+			int32_t temperature = (int32_t)ulp_temperature & 0xFFFF;	//10 * n°C
+			uint32_t humidity   = ulp_humidity & 0xFFFF;	//10 * n%
+			int8_t crc_check = ((temperature >> 8 ) + (temperature & 0xFF) +
+				    (humidity >> 8 ) + (humidity & 0xFF)) -
    				    (ulp_crc8_value & 0xFF);
 			rtc_fsm_cycles += ulp_cycles & 0xFFFF;	//Gesamtzähler ulp-cycles
-			ulp_cycles = 0;	//Rücksetzen f. nächsten Maincyle
-			add_entry_I32(&pl, dt_am2302, 0, res.crc_check, res.temperature);
-			add_entry_I32(&pl, dt_am2302, 1, res.crc_check, res.humidity);
-			add_entry_I32(&pl, dt_am2302, 2, 0, rtc_fsm_cycles);
-			#ifdef DEBUG_X
-				printf("[%04d]AM2302 Temp: %.1f°C | Humi: %.1f%% | cyc: %d\n",
-						now(), res.temperature / 10.0, res.humidity / 10.0, rtc_fsm_cycles);
-			#endif
+			if (crc_check == 0) {
+				ulp_cycles = 0;	//Rücksetzen f. nächsten Maincyle
+				add_entry_I32(&pl, dt_am2302, 0, crc_check, temperature);
+				add_entry_I32(&pl, dt_am2302, 1, crc_check, humidity);
+				add_entry_I32(&pl, dt_am2302, 2, 0, rtc_fsm_cycles);
+				#ifdef DEBUG_X
+					printf("[%04d]AM2302 Temp: %.1f°C | Humi: %.1f%% | cyc: %d\n",
+							now(), temperature / 10.0, humidity / 10.0, rtc_fsm_cycles);
+				#endif
+			} else {
+				printf("AM2302 CRC-Error: %d\n", crc_check);
+			}
 		}	// DHT21
 		#endif
 
@@ -466,35 +482,36 @@ void app_main(void) {
 
 		#ifdef RFLAG_SHT31
 		if ((flag & RFLAG_SHT31) != 0) {
-			sht31_result_t res = sht31_i2c_get_result();
-			if (res.status == 0) {
-				add_entry_I32(&pl, dt_sht3x, 0, res.status, res.temperature);
-				add_entry_I32(&pl, dt_sht3x, 1, res.status, res.humidity);
+			int32_t temperature = (int32_t)ulp_sht31_temp;
+			uint32_t humidity = ulp_sht31_humi;
+			if (ulp_sht31_err == 0) {
+				add_entry_I32(&pl, dt_sht3x, 0, 0, temperature);
+				add_entry_I32(&pl, dt_sht3x, 1, 0, humidity);
 				#ifdef DEBUG_X
-				printf("[%04d] SHT31 - Temp: %.2f°C | Humi: %.2f%% | Status: %d\n", now(),
-						res.temperature / 100.0, res.humidity / 100.0, res.status);
+				printf("[%04d] SHT31 - Temp: %.2f°C | Humi: %.2f%%\n",
+						now(), temperature / 100.0, humidity / 100.0);
 				#endif
 			} else {
-				printf ("Fehler SHT31\n");
+				printf ("Fehler SHT31: %d\n", ulp_sht31_err);
 			}
 		}
 		#endif	//sht31
 
 		#ifdef RFLAG_SHT31_RISCV
 		if ((flag & RFLAG_SHT31_RISCV) != 0){
-			sht31_result_t res;
-			res.temperature = ulp_temp;
-			res.humidity = ulp_humi;
-			res.status = ulp_err;
-
-			!!!!
-
-			if (res.status == 0) {
-				printf("[%04d] SHT31 - Temp: %.2f°C | Humi: %.2f%% | Status: %d\n", now(),
-						res.temperature / 100.0, res.humidity / 100.0, res.status);
+			int32_t temperature = (int32_t)ulp_sht31_temp;
+			uint32_t humidity = ulp_sht31_humi;
+			int8_t  status = (int8_t) ulp_sht31_err;
+			add_entry_I32(&pl, dt_sht3x, 0, 0, temperature);
+			add_entry_I32(&pl, dt_sht3x, 1, 0, humidity);
+			#ifdef DEBUG_X
+			if (status == 0) {
+				printf("[%04d] SHT31 - Temp: %.2f°C | Humi: %.2f%%\n",
+						now(), temperature / 100.0, humidity / 100.0);
 			} else {
-				printf ("Fehler SHT31\n");
+				printf ("Fehler SHT31: %d\n", status);
 			}
+			#endif
 		}
 		#endif // sht31_ulp
 
@@ -535,13 +552,21 @@ void app_main(void) {
 	send_data_frame(&pl, pl.ix + sizeof(pl.man));
 
 	#ifdef USE_ULP_RISCV
-	//IDF v4.4 -> Domain Periph muss vei Verwendung riscv ausgeschaltet sein (default)
+	//IDF v4.4 -> Domain Periph muss bei Verwendung riscv ausgeschaltet sein (default)
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_ON);
 	#endif
 
 	wiog_wifi_sensor_goto_sleep(WAKEUP_SOURCE);
+
+	#ifdef USE_STEPUP_CTRL
+	//Stepup-regler vor DeepSleep heruntertasten
+   	rtc_gpio_set_level(pwr_ctrl, 0);
+	#endif
+
+   	printf("[%04d]Goto DeepSleep for %.3fs\n", now(), rtc_interval_ms / 1000.0);
+	esp_deep_sleep_start();
 
 	//----------------------------------------------------------------
 

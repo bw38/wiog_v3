@@ -391,7 +391,5 @@ void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {
     esp_deep_sleep_disable_rom_logging();
 	rtc_onTime += esp_timer_get_time() / 1000;
 
-   	printf("[%04d]Goto DeepSleep for %.3fs\n", now(), rtc_interval_ms / 1000.0);
 
-	esp_deep_sleep_start();
 }

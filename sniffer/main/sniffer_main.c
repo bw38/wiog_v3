@@ -13,7 +13,7 @@
 #include "string.h"
 #include "esp_log.h"
 
-#include "../../wiog_include/wiog_system.h"
+#include "wiog_include/wiog_system.h"
 
 #define WORKING_CHANNEL 3
 
