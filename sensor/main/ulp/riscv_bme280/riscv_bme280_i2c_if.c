@@ -36,9 +36,9 @@ static uint32_t mpres = 0;
 
 //external variables, access from main => ulp_xxxxx
 //results to main
-uint32_t bme280_humidity;
-uint32_t bme280_temperature;
-uint32_t bme280_pressure;
+uint32_t bme280_humidity;		// %  * 1000
+uint32_t bme280_temperature;	// °C * 100
+uint32_t bme280_pressure;		// Pa
 uint32_t bme280_status;
 uint32_t bme280_chip_id = 0;
 uint32_t bme280_acquisition_time_ms;
@@ -46,10 +46,10 @@ uint32_t bme280_cycles = 0;
 //set individual from main
 uint32_t bme280_sda = 0;
 uint32_t bme280_scl = 0;
-uint32_t set_bme280_force_wake = 0;
-uint32_t set_bme280_thres_temp = 0;
-uint32_t set_bme280_thres_humi = 0;
-uint32_t set_bme280_thres_pres = 0;
+uint32_t set_bme280_force_wake = 0;	//max ulp loops without wake main
+uint32_t set_bme280_thres_temp = 0;	//x * 0.01°C
+uint32_t set_bme280_thres_humi = 0; //x * 0.001%
+uint32_t set_bme280_thres_pres = 0; //x * 0,01hPa
 
 
 // HW - Initialisierung --------------------------------------------

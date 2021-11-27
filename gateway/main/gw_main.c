@@ -64,6 +64,7 @@ uint32_t  dib_get_def_sleep_time_ms(uint8_t species);	//SlepTimes aus DeviceInfo
 uint32_t  dib_get_interval_ms(dev_uid_t uid, species_t spec);
 uint8_t   dib_get_min_snr_db(dev_uid_t uid);
 species_t dib_get_species(dev_uid_t uid);
+uint32_t  dib_get_return_value(dev_uid_t uid);
 //---------------------------------------------------------------------------------------------------------------
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
@@ -75,7 +76,7 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 
 	//nur fehlerfreie Pakete des eigenen Netzes bearbeiten
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(header->mac_net, &mac_net, sizeof(mac_addr_t)) !=0)) return;
-
+//	if (sizeof(&header) != sizeof(wiog_header_t)) return;
 	wiog_event_rxdata_t frame;
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 	memcpy(&frame.wiog_hdr, header, sizeof(wiog_header_t));
@@ -170,12 +171,12 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			ptx_frame->tx_max_repeat = 0;
 			ptx_frame->h_timer = NULL;
 			//Gerätespezifisches Interval zurückliefern
-			ptx_frame->wiog_hdr.interval_ms = dib_get_interval_ms(pHdr->uid, pHdr->species);
+			ptx_frame->wiog_hdr.interval_ms = dib_get_interval_ms(evt.wiog_hdr.uid, pHdr->species);
 			//Empfehlung für Tx-PWR - Korrektur +/- db zurückliefern
 			ptx_frame->wiog_hdr.txpwr = dib_get_min_snr_db(evt.wiog_hdr.uid) - nib_get_best_snr(&nib, evt.wiog_hdr.uid);
 			//Species zuweisen (nur sinnvoll: actor/node)
 			ptx_frame->wiog_hdr.species = dib_get_species(evt.wiog_hdr.uid);
-
+			ptx_frame->wiog_hdr.rdi32 = dib_get_return_value(evt.wiog_hdr.uid);
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
   	  			  .callback = &cb_tx_delay_slot,
@@ -592,6 +593,15 @@ species_t dib_get_species(dev_uid_t uid) {
 		return pdi->species;
 	else
 		return DUMMY;
+}
+
+//allgemeiner 32-bit Rückgabewert zur ferngesteuerten Geräte-Konfiguration
+uint32_t dib_get_return_value(dev_uid_t uid) {
+	device_info_t* pdi = get_device_info(uid);
+	if (pdi != NULL)
+		return pdi->return_val;
+	else
+		return 0;
 }
 
 //----------------------------------------------------------------------

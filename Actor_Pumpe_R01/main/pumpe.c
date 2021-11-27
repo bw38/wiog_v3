@@ -18,7 +18,6 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 
-#include "interface.h"
 #include "pumpe.h"
 
 
@@ -41,6 +40,7 @@ static int64_t point_in_time;	//Zeitpunkt Pumpenabschaltung (NS)
 bool timer_task_is_running = false;
 
 static xQueueHandle gpio_evt_queue = NULL;
+static xQueueHandle hQResponse;
 
 //Prototypen
 void monitoring_ns_state(void *pvParameters);
@@ -54,7 +54,8 @@ void indicator_task(void* arg);
 
 // Schnittstellen main **************************************************************************************
 
-void device_init() {
+void pumpctrl_init(xQueueHandle hQR) {
+	hQResponse = hQR;
     //Ausgabe-Pins -----------------------------------------------------------------
     INIT_OUT_BIT_A1; OUT_BIT_A1_ON;
     INIT_OUT_BIT_A2; OUT_BIT_A2_OFF;
@@ -71,11 +72,11 @@ void device_init() {
 //Status sofort senden
 void main_send_immediately() {
 	uint32_t flag = 0;
-	xQueueSend(measure_response_queue, &flag, portMAX_DELAY);
+	xQueueSend(hQResponse, &flag, portMAX_DELAY);
 }
 
 // Bitmaske für Pumpensteuerung
-void device_set_control(uint32_t bm){
+void pumpctrl_set_control(uint32_t bm){
 	uint8_t ns = NS_OFF;
 	if (bm ==1) ns = NS_ON;
 	set_out_bitmask(ns);
@@ -85,7 +86,7 @@ void device_set_control(uint32_t bm){
 
 
 //Bitmaske der IN-Bits negiert zurückliefern
-uint32_t device_get_in_bitmask() {
+uint32_t pumpctrl_get_in_bitmask() {
 	uint32_t mask = 0;
 	mask |= gpio_get_level(IN_BIT_Y)^1; mask <<= 1;
 	mask |= gpio_get_level(IN_BIT_X)^1;
@@ -93,7 +94,7 @@ uint32_t device_get_in_bitmask() {
 }
 
 //lesen der aktuell gesetzen Ausgangs-Maskierung
-uint32_t device_get_out_bitmask() {
+uint32_t pumpctrl_get_out_bitmask() {
 	uint32_t mask = 0;
 	mask |= gpio_get_level(OUT_BIT_B2); mask <<= 1;
 	mask |= gpio_get_level(OUT_BIT_B1); mask <<= 1;
@@ -119,7 +120,7 @@ void monitoring_ns_state(void *pvParameters)
 	int64_t ts = esp_timer_get_time();
 	while(true)
 	{
-		uint32_t mask = device_get_out_bitmask();
+		uint32_t mask = pumpctrl_get_out_bitmask();
 		if (mask != NS_OFF) {
 			//Zwangsreset bei Zeitüberschreitung
 			if ((esp_timer_get_time() - ts) > ((int64_t)MAX_NS_ON_TIME_MS * 1000) )

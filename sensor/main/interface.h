@@ -12,10 +12,10 @@
 
 //Geräteauswahl (nur eine UID zulässig -----------------------
 //#define UID40319	// ESP32 - TestPlug, div Sensoren
-#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
+//#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
 //#define UID27963	// ESP32 - AM2302 - Rohrmelder or, Li-Bat Direktversorgung
 //#define UID24931	// ESP32 - AM2302 - Rohrmelder gr, Li-Bat Direktversorgung
-//#define UID45425b	// ESP32S2 - TestPlug, div Sensoren
+#define UID45425c	// ESP32S2 - TestPlug, div Sensoren
 
 
 // -----------------------------------------------------------
@@ -177,17 +177,11 @@
 #endif	//--------------------------------------------------------
 
 #ifdef UID45425b			// Testboard ESP32S2 Plug - RISC-V BME280 Main ----------------
-#include "gadget/ubat/ubat.h"
 
 #define RFLAG_UBAT			1
 #define RFLAG_BME280_RISCV	2
 
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
-
-#define TEMP_THRESHOLD		0.25	//delta °C
-#define HUMI_THRESHOLD		2		//delta %
-#define PRES_THRESHOLD		2		//delta hPa
-#define MAX_FORCE_REPORT	3		//nach x Messung main spätestens wecken
 
 #define UBAT_ADC_CHN		ADC1_CHANNEL_3		//GPIO 4 Messeingang
 //#define UBAT_DIV_GND		GPIO_NUM_xx			//Spannungsteiler während Messung nach unten ziehen
@@ -209,10 +203,6 @@
 #define RFLAG_SHT31_RISCV	2
 
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
-
-#define TEMP_THRESHOLD		0.25	//delta °C
-#define HUMI_THRESHOLD		2		//delta %
-#define MAX_FORCE_REPORT	0		//nach x Messung main spätestens wecken
 
 #define UBAT_ADC_CHN		ADC1_CHANNEL_3		//GPIO 4 Messeingang
 //#define UBAT_DIV_GND		GPIO_NUM_xx			//Spannungsteiler während Messung nach unten ziehen

@@ -1,1 +1,0 @@
-/home/joerg/Projects/espressif/wiog_v3/wiog_include/wiog_system.h

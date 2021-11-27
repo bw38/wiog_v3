@@ -146,34 +146,32 @@ typedef struct __attribute__((packed)){
 	int8_t txpwr;
 	uint8_t channel;
 	uint16_t uid;
-	uint8_t crypt;		//0: uncrypted / 1: esp32-aes-crypt / 2: simple-crypt
-	uint8_t res8_A;
 	uint32_t frameid;			//Frame-ID f. verify Ack, Random32
 	uint32_t interval_ms;
-	union {
-		struct {				//verwendbar als freie Daten oder interval im Ack-Frame
-			uint8_t tagA;		//Zusatz-Info Device -> GW
-			uint8_t tagB;
-			int16_t tagC;
-		};
-		uint32_t tagD;	//Interval-Info GW -> Device in ms, 0 => Sensor Standby for Data
+	union {	//Status infos (Repeater-Infos), derzeit keine betriebswichtigen Daten
+		struct { uint8_t tagA; uint8_t tagB; int16_t tagC; };
+		uint32_t tagD;
+	};
+	union {	//32bit Rückgabe Device-Infos GW -> actor -> sensor, bspw Thresholds
+		struct { uint8_t rdi8A; uint8_t rdi8B; uint8_t rdi8C; uint8_t rdi8D;};
+		struct { uint16_t rdi16A; uint16_t rdi16B;};
+		uint32_t rdi32;
 	};
 } wiog_header_t;
+
 
 static const wiog_header_t dummy_header = {
 	.frame_ctrl = 0x00d0,	//Action-Frame
 	.duration = 0,
 	.seq_ctrl = 0,
 	.vtype = UNKNOWN,
-	.tagA = 0,
-	.tagB = 0,
-	.tagC = 0,
 	.species = DUMMY,
 	.txpwr = 0,
 	.channel = 0,
 	.uid = 0,
-	.crypt = 0,
-	.frameid = 0
+	.frameid = 0,
+	.tagD = 0,
+	.rdi32 = 0
 };
 
 

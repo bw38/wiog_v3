@@ -26,6 +26,10 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_NONE	//s. readme.txt
 //zusätzlich Bootloader-msg  mit GPIO_15 -> low unterdrücken
 
+
+#define MEASURE_QUEUE_SIZE 32
+xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
+
 //Prototypes
 void ShowDateTime(time_t dt);
 

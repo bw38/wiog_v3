@@ -58,7 +58,8 @@ static uint32_t mhumi = 0;
 
 //global var -------------------------------------------------------------------
 //return result
-uint32_t sht31_humi, sht31_temp;	// Res*100
+uint32_t sht31_humi; 				// humi = n * 0.01%
+uint32_t sht31_temp;				// temp = n * 0.01°C
 uint32_t sht31_status_reg;			// Bit 15..0, s. Datenblatt
 uint32_t sht31_err;					// 0 = Ok
 uint32_t sht31_cycles = 0;
@@ -66,8 +67,8 @@ uint32_t sht31_cycles = 0;
 uint32_t sht31_set_heater = 0;		// Heizung 0-off / 1-on
 uint32_t sht31_set_mode = 1;		// 0-Low, 1-Medium, 2-High
 //wakeup conditions
-uint32_t set_sht31_thres_temp = 50;	// +/- 0.5°C
-uint32_t set_sht31_thres_humi = 200;	// +/- 2%
+uint32_t set_sht31_thres_temp = 0;	//n * 0.01°C
+uint32_t set_sht31_thres_humi = 0;	//n * 0.01%
 uint32_t set_sht31_force_wake = 0;	// max alle x Messungen -> Meldung an MainProc
 
 //prototypes ------------------------------------------------------------------
@@ -179,6 +180,8 @@ int main (void) {
     }
 
     if (sht31_err == 0) {
+    	if (sht31_set_heater != 1) sht31_set_heater = 0;
+
     	if (((sht31_status_reg & 0x2000) == 0) && (sht31_set_heater == 1)) tx_cmd(SHT31_HEATER_EN);
     	if (((sht31_status_reg & 0x2000) != 0) && (sht31_set_heater == 0)) tx_cmd(SHT31_HEATER_DIS);
     }
@@ -234,9 +237,10 @@ int main (void) {
 
     //wakeup conditions
 
-    if ((++mcycle >= set_sht31_force_wake) ||				//max cycles seit letzter Meldung
+    if ((++mcycle >= set_sht31_force_wake) ||					//max cycles seit letzter Meldung
     	(abs(mtemp - sht31_temp) >= set_sht31_thres_temp) ||	//nach Temperaturänderung
-		(abs(mhumi - sht31_humi) >= set_sht31_thres_humi)){		//nach Luftfeuchteänderung
+		(abs(mhumi - sht31_humi) >= set_sht31_thres_humi) ||	//nach Luftfeuchteänderung
+		(sht31_set_heater == 1)) {								//bei eingeschalteter Heizung
     	mtemp = sht31_temp;
     	mhumi = sht31_humi;
     	mcycle = 0;

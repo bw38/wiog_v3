@@ -65,8 +65,36 @@ void rx_data_handler(wiog_header_t* pHdr)  {
 	LED_STATUS_OFF;
 	#endif
 
+	#ifdef RFLAG_BME280_RISCV
+	ulp_set_bme280_thres_temp = pHdr->rdi8A;		//A * 0.01°C	[0..2.55°C]
+	ulp_set_bme280_thres_humi = pHdr->rdi8B * 100;	//B * 0.1%		[0..25.5%]
+	ulp_set_bme280_thres_pres = pHdr->rdi8C * 10;	//C * 0.1hPa	[0..25.5hPa]
+	ulp_set_bme280_force_wake = pHdr->rdi8D;
+		#ifdef DEBUG_X
+		printf("Thresholds: %.2f°C | %.2f%% | %.2fhPa\n",
+				ulp_set_bme280_thres_temp / 100.0, ulp_set_bme280_thres_humi / 1000.0, ulp_set_bme280_thres_pres / 100.0);
+		printf("Max ULP Cycles: %d\n", ulp_set_bme280_force_wake);
+		#endif
+	#endif
+
+	#ifdef RFLAG_SHT31_RISCV
+	ulp_set_sht31_thres_temp = pHdr->rdi8A;			//A * 0.01°C	[0..2.55°C]
+	ulp_set_sht31_thres_humi = pHdr->rdi8B * 10;	//B * 0.1%		[0..25.5%]
+	ulp_sht31_set_heater = pHdr->rdi8C;				//0 - Heizung aus / !=0 - Heizung f. einen Messzyklus an
+	ulp_set_sht31_force_wake = pHdr->rdi8D;
+		#ifdef DEBUG_X
+		printf("Thresholds: %.2f°C | %.2f%%\n",
+				ulp_set_sht31_thres_temp / 100.0, ulp_set_sht31_thres_humi / 100.0);
+		printf ("Heater: %d\n", ulp_sht31_set_heater);
+		printf("Max ULP Cycles: %d\n", ulp_set_sht31_force_wake);
+		#endif
+	#endif
+
+
+
 	#ifdef DEBUG_X
 		printf("[%04d]Rx-ACK\n", now());
+
 	#endif
 }
 
@@ -337,9 +365,6 @@ void app_main(void) {
 	#ifdef RFLAG_SHT31_RISCV
 	ulp_sht31_set_heater = 0;	//	1 => testweise einschalten
 	ulp_sht31_set_mode = 1;	//  0-Low, 1-Medium, 2-High
-	ulp_set_sht31_force_wake = MAX_FORCE_REPORT;
-	ulp_set_sht31_thres_temp = TEMP_THRESHOLD * 100;
-	ulp_set_sht31_thres_humi = HUMI_THRESHOLD * 100;
 	ulp_sht31_sda = I2C_MASTER_SDA_IO;
 	ulp_sht31_scl = I2C_MASTER_SCL_IO;
 	flags |=  RFLAG_SHT31_RISCV;
@@ -350,10 +375,10 @@ void app_main(void) {
 
 	#ifdef RFLAG_BME280_RISCV
 	//Aufweckbedingungen f. nächsten Messzyklus
-	ulp_set_bme280_force_wake = MAX_FORCE_REPORT;
-	ulp_set_bme280_thres_temp = TEMP_THRESHOLD * 100;
-	ulp_set_bme280_thres_humi = HUMI_THRESHOLD * 1000;
-	ulp_set_bme280_thres_pres = PRES_THRESHOLD * 100;
+//	ulp_set_bme280_force_wake = MAX_FORCE_REPORT;
+//	ulp_set_bme280_thres_temp = TEMP_THRESHOLD * 100;
+//	ulp_set_bme280_thres_humi = HUMI_THRESHOLD * 1000;
+//	ulp_set_bme280_thres_pres = PRES_THRESHOLD * 100;
 	ulp_bme280_sda = I2C_MASTER_SDA_IO;
 	ulp_bme280_scl = I2C_MASTER_SCL_IO;
 	flags |=  RFLAG_BME280_RISCV;
@@ -367,7 +392,7 @@ void app_main(void) {
 	#ifdef DEBUG_X
 		printf("[%04d]Init Wifi\n", now());
 	#endif
-	wiog_wifi_sensor_init();	//ca. 50ms !!!
+	wiog_wifi_sensor_init();	//ca. 25ms
 	#ifdef DEBUG_X
 		printf("[%04d]Wifi ready\n", now());
 		printf("[%04d]UID: %05d\n", now(), my_uid);
@@ -504,8 +529,10 @@ void app_main(void) {
 			int8_t  status = (int8_t) ulp_sht31_err;
 			add_entry_I32(&pl, dt_sht3x, 0, 0, temperature);
 			add_entry_I32(&pl, dt_sht3x, 1, 0, humidity);
+			add_entry_I32(&pl, dt_cycle, 1, 0, ulp_sht31_cycles);
 			#ifdef DEBUG_X
 			if (status == 0) {
+				printf("ulp-cycle: %d\n", ulp_sht31_cycles);
 				printf("[%04d] SHT31 - Temp: %.2f°C | Humi: %.2f%%\n",
 						now(), temperature / 100.0, humidity / 100.0);
 			} else {
@@ -521,7 +548,7 @@ void app_main(void) {
 				add_entry_I32(&pl, dt_bme280, 0, 0, ulp_bme280_pressure);
 				add_entry_I32(&pl, dt_bme280, 1, 0, ulp_bme280_temperature);
 				add_entry_I32(&pl, dt_bme280, 2, 0, ulp_bme280_humidity);
-				add_entry_I32(&pl, dt_bme280, 3, 0, ulp_bme280_cycles);
+				add_entry_I32(&pl, dt_cycle,  1, 0, ulp_bme280_cycles);
 
 				#ifdef DEBUG_X
 				printf("Chip ID  : 0x%.2x\n", ulp_bme280_chip_id);

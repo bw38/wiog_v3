@@ -24,6 +24,9 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_NONE	//s. readme.txt
 //zusätzlich Bootloader-msg  mit GPIO_15 -> low unterdrücken
 
+#define MEASURE_QUEUE_SIZE 32
+xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
+
 //Prototypes
 void ShowDateTime(time_t dt);
 
@@ -57,9 +60,9 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 			//erwartete DatenTypen verarbeiten
 			if (pi32->datatype == dt_bitmask) {
 				if ((pi32->index == 0) && (pi32->value == 1))
-					device_set_control(1);	// On-Bitmask
+					pumpctrl_set_control(1);	// On-Bitmask
 				else
-					device_set_control(0);	//Off-Bitmask
+					pumpctrl_set_control(0);	//Off-Bitmask
 			}
 			//printf("I32: %d |IX: %d |DT: %d\n", pi32->value, pi32->index, pi32->datatype);
 			break;
@@ -104,7 +107,8 @@ void app_main(void) {
 
     set_species(ACTOR);	//Repeater-Funktion kann in Ack-Frame zugewiesen werden (DIB im GW)
 
-    device_init();
+
+    pumpctrl_init(measure_response_queue);
 
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
@@ -123,9 +127,9 @@ void app_main(void) {
 		bzero(&pl, sizeof(pl));
 		set_management_data(&pl.man);
 
-		uint32_t bm = device_get_out_bitmask();
+		uint32_t bm = pumpctrl_get_out_bitmask();
 		add_entry_I32(&pl, dt_bitmask, 0 ,0, bm);
-		bm = device_get_in_bitmask();
+		bm = pumpctrl_get_in_bitmask();
 		add_entry_I32(&pl, dt_bitmask, 1 ,0, bm);
 		//Send Data to GW
 		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);

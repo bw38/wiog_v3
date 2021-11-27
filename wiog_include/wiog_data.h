@@ -190,9 +190,8 @@ typedef struct __attribute__((packed)) {
 	dev_uid_t uid;
 	uint8_t  species;
 	uint32_t interval_ms;
+	uint32_t return_val;   //gerätespezifischer Rückgabewert
 	uint8_t  min_snr_db;
-//	uint32_t data_len;
-//	uint8_t* data;
 } device_info_t;
 
 //Datenstruktur wird im RPi - TDeviceInfoBlock.Data2Buffer() zusammengestellt

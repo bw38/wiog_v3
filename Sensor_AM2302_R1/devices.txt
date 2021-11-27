@@ -1,4 +1,0 @@
-DHT22 - Temperatur / Luftfeuchte
-kein StepUp-Regler
-
-60717 - Rohrmelder or

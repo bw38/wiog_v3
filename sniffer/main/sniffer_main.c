@@ -42,7 +42,7 @@ IRAM_ATTR  void wifi_sniffer_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	if (memcmp(header->mac_net, &mac_net, sizeof(mac_addr_t)) !=0) {
 		return;
 	}
-
+//	if (sizeof(&header) != sizeof(wiog_header_t)) return;
 	wiog_event_rxdata_t frame;
 	frame.timestamp = now()*1000;
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
@@ -89,6 +89,7 @@ static void wiog_sniffer_task(void *pvParameter) {
 			(uint16_t)pHdr->tagC,
 			pHdr->frameid,
 			pHdr->seq_ctrl);
+
 
 
 		last_frame_id = pHdr->frameid;
