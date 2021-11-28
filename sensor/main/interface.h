@@ -7,7 +7,15 @@
 #ifndef MAIN_INTERFACE_H_
 #define MAIN_INTERFACE_H_
 
-
+/*
+ * Sensorauswahl ----------------------------------------
+ * 1. UID auswählen (nur eine Auswahl zulässig, alle anderen auskommentieren
+ * 2. ESP-Typ wählen / Terget in Eclipse oder "idf.py set-target esp32XX
+ * 3. Komponenten in main/CMakefiles.txt auswählen / aktivieren
+ * 4. sdkconfig anpassen (ULP, RISCV, reservierter ULP-Speicher ....)
+ * 5. build, testen
+ * 6. #undef Debug_X -> build
+ */
 
 
 //Geräteauswahl (nur eine UID zulässig -----------------------
@@ -116,9 +124,9 @@
 #define AM2302_GPIO_OWP		26
 #define AM2302_RTC_IO_OWP	7
 
-#define TEMP_THRESHOLD		0.3					// 1/10°C -Schritte
-#define HUMI_THRESHOLD		2					// 1/10% - Schritte
-#define MAX_FORCE_REPORT	30					// nach max x Messungen aufwecken
+//#define TEMP_THRESHOLD		0.3					// 1/10°C -Schritte
+//#define HUMI_THRESHOLD		2					// 1/10% - Schritte
+//#define MAX_FORCE_REPORT	30					// nach max x Messungen aufwecken
 
 
 #define UBAT_ADC_CHN		ADC1_CHANNEL_7		//Messeingang	GPIO35

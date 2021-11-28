@@ -90,7 +90,16 @@ void rx_data_handler(wiog_header_t* pHdr)  {
 		#endif
 	#endif
 
-
+	#ifdef RFLAG_AM2302_FSM
+	ulp_temp_threshold = pHdr->rdi8A;			//A * 0.1°C	[0..25.5°C]
+	ulp_humi_threshold = pHdr->rdi8B;			//B * 0.1%	[0..25.5%]
+	ulp_ncycles_force_wake = pHdr->rdi8D;
+		#ifdef DEBUG_X
+		printf("Thresholds: %.1f°C | %.1f%%\n",
+				ulp_temp_threshold / 10.0, ulp_humi_threshold / 10.0);
+		printf("Max ULP Cycles: %d\n", ulp_ncycles_force_wake);
+		#endif
+	#endif
 
 	#ifdef DEBUG_X
 		printf("[%04d]Rx-ACK\n", now());
@@ -311,9 +320,9 @@ void app_main(void) {
 	  	rtc_fsm_cycles = 0;
 	  	ulp_cycles = 0;
 	}
-	ulp_temp_threshold = TEMP_THRESHOLD * 10;
-	ulp_humi_threshold = HUMI_THRESHOLD * 10;
-	ulp_ncycles_force_wake = MAX_FORCE_REPORT;
+	ulp_temp_threshold = 0;	//wird mit ReturnValue im ACK neu gesetzt
+	ulp_humi_threshold = 0;
+	ulp_ncycles_force_wake = 0;
 	flags |= RFLAG_AM2302_FSM;
 	uint32_t f_am2302 = RFLAG_AM2302_FSM;
 	xQueueSend(measure_response_queue, &f_am2302, portMAX_DELAY);
@@ -463,7 +472,7 @@ void app_main(void) {
 				ulp_cycles = 0;	//Rücksetzen f. nächsten Maincyle
 				add_entry_I32(&pl, dt_am2302, 0, crc_check, temperature);
 				add_entry_I32(&pl, dt_am2302, 1, crc_check, humidity);
-				add_entry_I32(&pl, dt_am2302, 2, 0, rtc_fsm_cycles);
+				add_entry_I32(&pl, dt_cycle,  1, 0, rtc_fsm_cycles);
 				#ifdef DEBUG_X
 					printf("[%04d]AM2302 Temp: %.1f°C | Humi: %.1f%% | cyc: %d\n",
 							now(), temperature / 10.0, humidity / 10.0, rtc_fsm_cycles);

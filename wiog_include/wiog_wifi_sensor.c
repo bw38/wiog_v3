@@ -62,7 +62,9 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 
 	//nur fehlerfreie Pakete des eigenen Netzes bearbeiten
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(pHdr->mac_net, &mac_net, sizeof(mac_addr_t)) !=0)) return;
-//	if (sizeof(&pHdr) != sizeof(wiog_header_t)) return;
+
+
+
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
 	//Pakettypen filtern
