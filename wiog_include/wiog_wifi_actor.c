@@ -95,7 +95,9 @@ IRAM_ATTR  void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 
 	//nur fehlerfreie Pakete des eigenen Netzes bearbeiten
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(header->mac_net, &mac_net, 6) !=0)) return;
-//	if (sizeof(&header) != sizeof(wiog_header_t)) return;
+	//Integrität des Header prüfen
+	if (crc16((uint8_t*)header, sizeof(wiog_header_t)-2) != header->hdr_sign) return;
+
 	wiog_event_rxdata_t frame;
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 	memcpy(&frame.wiog_hdr, header, sizeof(wiog_header_t));
@@ -370,6 +372,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 		//max Wiederholungen bis ACK von GW oder Node
 		tx_fid = evt.wiog_hdr.frameid;
 		for (int i = 0; i <= evt.tx_max_repeat; i++) {
+			//Header-Signature
+			((wiog_header_t*)buf)->hdr_sign = crc16(buf, sizeof(wiog_header_t)-2);
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, buf, tx_len, false);
 			ts_tx = esp_timer_get_time();

@@ -157,6 +157,8 @@ typedef struct __attribute__((packed)){
 		struct { uint16_t rdi16A; uint16_t rdi16B;};
 		uint32_t rdi32;
 	};
+	//letzter Eintrag
+	uint16_t hdr_sign;	//Header-Signature CRC16
 } wiog_header_t;
 
 

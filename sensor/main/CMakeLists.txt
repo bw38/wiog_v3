@@ -6,7 +6,7 @@ set(COMPONENT_SRCS
     	"wiog_include/wiog_wifi_sensor.c" 
     	
     	"gadget/ubat/ubat.c"
- #   	"gadget/bme280/bme280_i2c_if.c" "gadget/bme280/BME280_driver-master/bme280.c"		
+#    	"gadget/bme280/bme280_i2c_if.c" "gadget/bme280/BME280_driver-master/bme280.c"		
 )
     	
 set(COMPONENT_ADD_INCLUDEDIRS "")

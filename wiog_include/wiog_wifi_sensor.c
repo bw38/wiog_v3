@@ -62,8 +62,8 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 
 	//nur fehlerfreie Pakete des eigenen Netzes bearbeiten
 	if ((ppkt->rx_ctrl.rx_state != 0) || (memcmp(pHdr->mac_net, &mac_net, sizeof(mac_addr_t)) !=0)) return;
-
-
+	//Integrität des Header prüfen
+	if (crc16((uint8_t*)pHdr, sizeof(wiog_header_t)-2) != pHdr->hdr_sign) return;
 
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
@@ -166,6 +166,13 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 				esp_wifi_set_max_tx_power(MAX_TX_POWER);
 				tx_pwr_delta_dB = 6;	//next cycle mit höherer Tx-Leistung
 			}
+			//aktuelle Sendeleistung zu Testzwecken in Header eintragen
+			int8_t pwr;
+			esp_wifi_get_max_tx_power(&pwr);
+			((wiog_header_t*)buf)->txpwr = pwr;
+
+			//Header-Signature
+			((wiog_header_t*)buf)->hdr_sign = crc16(buf, sizeof(wiog_header_t)-2);
 			//Frame senden
 			esp_wifi_80211_tx(WIFI_IF_STA, buf, tx_len, false);
 			if (evt.tx_max_repeat == 0) break;	//1x Tx ohne ACK

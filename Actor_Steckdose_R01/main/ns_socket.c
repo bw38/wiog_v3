@@ -26,6 +26,7 @@ static int64_t point_in_time = 0;	//Zeitpunkt Abschaltung NS, Vergleich Systemze
 
 bool timer_task_is_running = false;
 
+static xQueueHandle hQResponse;
 static xQueueHandle gpio_evt_queue = NULL;
 
 //Prototypen
@@ -39,7 +40,8 @@ void indicator_task(void* arg);
 
 // Schnittstellen main **************************************************************************************
 
-void device_init() {
+void device_init(xQueueHandle hQR) {
+	hQResponse = hQR;
     //Ausgabe-Pins -----------------------------------------------------------------
     INIT_OUT_BIT_A1;
     INIT_OUT_BIT_A2;
@@ -59,14 +61,14 @@ void device_init() {
 //Status sofort senden
 void main_send_immediately() {
 	uint32_t flag = 0;
-	xQueueSend(measure_response_queue, &flag, portMAX_DELAY);
+	xQueueSend(hQResponse, &flag, portMAX_DELAY);
 }
 
 //Status verzögert senden
 IRAM_ATTR static void main_send_delayed_task(void *pvParameter) {
 	vTaskDelay(500*MS);
 	uint32_t flag = 0;
-	xQueueSend(measure_response_queue, &flag, portMAX_DELAY);
+	xQueueSend(hQResponse, &flag, portMAX_DELAY);
 	vTaskDelete(NULL);
 }
 

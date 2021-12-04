@@ -14,7 +14,7 @@
 #include "wiog_include/wiog_data.h"
 
 
-extern void device_init();
+extern void device_init(xQueueHandle hQR);
 extern void device_set_control(uint32_t bm);
 extern void device_set_timer(uint32_t sek);
 extern uint32_t device_get_out_bitmask();

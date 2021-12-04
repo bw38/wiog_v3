@@ -24,6 +24,9 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_NONE	//s. readme.txt
 //zusätzlich Bootloader-msg  mit GPIO_15 -> low unterdrücken
 
+#define MEASURE_QUEUE_SIZE 32
+xQueueHandle measure_response_queue;	//Flags -> Mess-Ereigni
+
 //Prototypes
 void ShowDateTime(time_t dt);
 
@@ -107,7 +110,7 @@ void app_main(void) {
 
     set_species(ACTOR);	//Repeater-Funktion kann in Ack-Frame zugewiesen werden (DIB im GW)
 
-    device_init();
+    device_init(measure_response_queue);
 
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);

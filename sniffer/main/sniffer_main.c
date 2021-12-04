@@ -39,10 +39,8 @@ IRAM_ATTR  void wifi_sniffer_packet_cb(void* buff, wifi_promiscuous_pkt_type_t t
 	const wiog_header_t *header =  &ipkt->header;
 
 	//nur Pakete des eigenen Netzes bearbeiten
-	if (memcmp(header->mac_net, &mac_net, sizeof(mac_addr_t)) !=0) {
-		return;
-	}
-//	if (sizeof(&header) != sizeof(wiog_header_t)) return;
+	if (memcmp(header->mac_net, &mac_net, sizeof(mac_addr_t)) !=0) return;
+
 	wiog_event_rxdata_t frame;
 	frame.timestamp = now()*1000;
 	memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
@@ -72,28 +70,32 @@ static void wiog_sniffer_task(void *pvParameter) {
 			printf("===> %.0fms\n", (evt.timestamp-ts_pkts_start) / 1000.0);
 			ts_pkts_start = evt.timestamp;
 		}
+		//Integrität des Header prüfen
+		uint16_t sign = crc16((uint8_t*)pHdr, sizeof(wiog_header_t)-2);
+		if (sign != pHdr->hdr_sign) {
+			printf(" Header Signature Error: %.4X != %.4X\n", sign, pHdr->hdr_sign);
+		} else {
 
-		printf("%02x => %02x | ", pHdr->mac_from[5], pHdr->mac_to[5]);
+			printf("%02x => %02x | ", pHdr->mac_from[5], pHdr->mac_to[5]);
 
-		printf("snr:%02ddB ch:%02d | L%.03d | ",
-			pRx_ctrl->rssi - pRx_ctrl->noise_floor,
-			pHdr->channel,
-			pRx_ctrl->sig_len
-		);
+			printf("snr:%02ddB ch:%02d | pwr:% .02d | L%.03d | ",
+				pRx_ctrl->rssi - pRx_ctrl->noise_floor,
+				pHdr->channel,
+				pHdr->txpwr,
+				pRx_ctrl->sig_len
+			);
 
-		printf(" uid:%05d | typ:%02x | A:%02x | B:%02x | C:%05d | fid:%08x  | sc%04x |",
-			pHdr->uid,
-			pHdr->vtype,
-			pHdr->tagA,
-			pHdr->tagB,
-			(uint16_t)pHdr->tagC,
-			pHdr->frameid,
-			pHdr->seq_ctrl);
+			printf("uid:%05d | typ:%02x | A:%02x | B:%02x | C:%05d | fid:%08x  | sc%04x |",
+				pHdr->uid,
+				pHdr->vtype,
+				pHdr->tagA,
+				pHdr->tagB,
+				(uint16_t)pHdr->tagC,
+				pHdr->frameid,
+				pHdr->seq_ctrl);
 
-
-
-		last_frame_id = pHdr->frameid;
-
+			last_frame_id = pHdr->frameid;
+		}
 		free(evt.pdata);
 
 		printf("| %.0fms\n", (evt.timestamp-ts_pkts_start) / 1000.0);

@@ -186,6 +186,9 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         							send_uart_frame(pl.data, pl.data_len, 'Y');
         						}
 
+        						else if (cFTyp == 'r') {
+        							esp_restart();
+        						}
 
         						else if (cFTyp == 'a') {	//Datenframe an Device senden
         							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
