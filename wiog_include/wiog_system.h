@@ -40,8 +40,8 @@
 #define MIN 60e3	//ms -> Min
 #define STD 60*MIN	//ms -> Std
 
-#define FW_VERSION				03
-#define FW_REVISION				00
+//#define FW_VERSION				03
+//#define FW_REVISION				00
 //#define MIN_SLEEP_TIME_MS		3*SEK
 //#define MAX_SLEEP_TIME_MS		12*STD
 //#define DEFAULT_SLEEP_TIME_MS 10*MIN
@@ -127,8 +127,8 @@ typedef enum {
 	ACK_FROM_GW,		//Empfangsbestätigung des GW
 	DATA_FROM_GW,
 	ACK_TO_GW,
-//	SNR_INFO_TO_GW,		//Node meldet Empfangsgüte an Gateway, Sofortmeldung nach ChannelScan, Daten im Vendor-Datenbereich
 	BC_NIB,				//Boradcast Node Info Block
+	RESET_DEV			//Reset	GW -> Device
 } vtype_t;
 
 

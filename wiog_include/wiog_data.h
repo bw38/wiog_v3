@@ -95,20 +95,20 @@ typedef struct __attribute__((packed)) {
 	uint16_t len;
 	uint16_t uid;			//ID Sensor/Actor, crc16 aus efuse-mac
 	uint8_t  wifi_channel;	//Arbeitskanal
-	uint8_t  version;
-	uint8_t  revision;
 	uint8_t  species;
-	uint8_t  rssi;
 	int8_t   tx_pwr;
-	uint32_t sz_heap;			//aktuelle Größe Heap
-	uint8_t  cnt_entries;		//Anzahl der Datensätze
-	uint8_t  res8A;
+	uint8_t  cnt_entries;	//Anzahl der Datensätze
+	uint32_t cycles;
+	uint32_t ulp_cycles;
+	uint32_t onTime;		//sensor - ms / actor - sek
+	uint32_t sz_heap;		//aktuelle Größe Heap, Debuging
+
 	union {
-		struct {	// to GW
+		struct {					// to Dev -> GW
 			uint32_t cnt_no_response;	//Anzahl der nicht übermittelten Datenpakete
-			uint32_t cnt_tx_repeat;		//Anzahl der Tx-Wiederholungen
+			uint32_t cnt_tx_repeat;	//Anzahl der Tx-Wiederholungen
 		};
-		int64_t utime; //from GW
+		int64_t utime; 				//from GW -> Actor
 	};
 } management_t;
 

@@ -8,8 +8,8 @@
 #ifndef MAIN_WIOG_WIFI_ACTOR_H_
 #define MAIN_WIOG_WIFI_ACTOR_H_
 
-static uint8_t version = 0;
-static uint8_t revision = 0;
+//static uint8_t version = 0;
+//static uint8_t revision = 0;
 
 extern uint8_t   wifi_channel;
 extern uint32_t  cnt_no_response;

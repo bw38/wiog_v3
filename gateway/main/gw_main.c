@@ -20,17 +20,6 @@
 #include "rs232.h"
 
 
-
-#define VERSION  3
-#define REVISION 0
-// --------------------------------------------------------------------------------
-
-
-
-//uint16_t  cnt_no_response;
-
-//uint32_t actual_frame_id;
-
 //WIoG - Wireless Internet of Garden
 #define WIOG_RX_QUEUE_SIZE 12
 static xQueueHandle wiog_rx_queue;
@@ -176,16 +165,23 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			ptx_frame->wiog_hdr.interval_ms = dib_get_interval_ms(evt.wiog_hdr.uid, pHdr->species);
 			//Empfehlung für Tx-PWR - Korrektur +/- db zurückliefern
 			ptx_frame->wiog_hdr.txpwr = dib_get_min_snr_db(evt.wiog_hdr.uid) - nib_get_best_snr(&nib, evt.wiog_hdr.uid);
+			//falls >= 3 Wiederholung -> Tx_PWR des Sensors erhöhen
+			if ((evt.wiog_hdr.seq_ctrl >= 3) || (evt.wiog_hdr.tagB >= 3)) ptx_frame->wiog_hdr.txpwr = 6;
 			//Species zuweisen (nur sinnvoll: actor/node)
 			ptx_frame->wiog_hdr.species = dib_get_species(evt.wiog_hdr.uid);
+			//Spontanrückgabe an device (bspw. Thresholds / ulp-max-cycles / ..)
 			ptx_frame->wiog_hdr.rdi32 = dib_get_return_value(evt.wiog_hdr.uid);
+
+			//Reset an Device senden
+//			ptx_frame->wiog_hdr.vtype = RESET_DEV;	//!!!!!!!!
+
+
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
   	  			  .callback = &cb_tx_delay_slot,
 				  .arg = (void*) ptx_frame,  	//Tx-Frame über Timer-Callback in die Tx-Queue stellen
 				  .name = "bc_act_from_gw"
 			};
-
 			ESP_ERROR_CHECK(esp_timer_create(&timer_args, &ptx_frame->h_timer));	//Create HiRes-Timer
 			ESP_ERROR_CHECK(esp_timer_start_once(ptx_frame->h_timer, 2000)); 	// Start the timer
 
@@ -337,13 +333,10 @@ void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid) {
 void set_management_data (management_t* pMan) {
 	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
-	pMan->version = VERSION;
-	pMan->revision = REVISION;
 	pMan->cnt_no_response = 0; //cnt_no_response;
-	int8_t pwr;
-	esp_wifi_get_max_tx_power(&pwr);
+	pMan->cnt_tx_repeat = 0;
+
 	pMan->cnt_entries = 0;
-//	ixtxpl = 0;
 }
 
 

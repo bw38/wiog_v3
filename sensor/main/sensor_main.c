@@ -229,10 +229,6 @@ void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
 void app_main(void) {
 
 	tStart = esp_timer_get_time();
-
-	version = VERSION;
-	revision = REVISION;
-
 	cb_rx_handler = &rx_data_handler;
 
 	init_nvs();
@@ -419,12 +415,6 @@ void app_main(void) {
 	bzero(&pl, sizeof(pl));
 	set_management_data(&pl.man);
 
-	//Kernlaufzeit
-	add_entry_I32(&pl, dt_runtime_ms, 0, 0, rtc_onTime);
-	//Cycle
-	add_entry_I32(&pl, dt_cycle, 0, 0, ++rtc_cycles);
-
-
 	uint32_t flag = 0;	//in der Queue zurückgeliefertes Einzelflag
 	//Gadgets melden mit Response-Flage die Bereitstellung der Messergebnisse
 	while ((xQueueReceive(measure_response_queue, &flag, 200*MS) == pdTRUE)) {
@@ -472,7 +462,7 @@ void app_main(void) {
 				ulp_cycles = 0;	//Rücksetzen f. nächsten Maincyle
 				add_entry_I32(&pl, dt_am2302, 0, crc_check, temperature);
 				add_entry_I32(&pl, dt_am2302, 1, crc_check, humidity);
-				add_entry_I32(&pl, dt_cycle,  1, 0, rtc_fsm_cycles);
+				pl.man.ulp_cycles = rtc_fsm_cycles;
 				#ifdef DEBUG_X
 					printf("[%04d]AM2302 Temp: %.1f°C | Humi: %.1f%% | cyc: %d\n",
 							now(), temperature / 10.0, humidity / 10.0, rtc_fsm_cycles);
@@ -538,7 +528,7 @@ void app_main(void) {
 			int8_t  status = (int8_t) ulp_sht31_err;
 			add_entry_I32(&pl, dt_sht3x, 0, 0, temperature);
 			add_entry_I32(&pl, dt_sht3x, 1, 0, humidity);
-			add_entry_I32(&pl, dt_cycle, 1, 0, ulp_sht31_cycles);
+			pl.man.ulp_cycles = ulp_sht31_cycles;
 			#ifdef DEBUG_X
 			if (status == 0) {
 				printf("ulp-cycle: %d\n", ulp_sht31_cycles);
@@ -557,7 +547,7 @@ void app_main(void) {
 				add_entry_I32(&pl, dt_bme280, 0, 0, ulp_bme280_pressure);
 				add_entry_I32(&pl, dt_bme280, 1, 0, ulp_bme280_temperature);
 				add_entry_I32(&pl, dt_bme280, 2, 0, ulp_bme280_humidity);
-				add_entry_I32(&pl, dt_cycle,  1, 0, ulp_bme280_cycles);
+				pl.man.ulp_cycles = ulp_bme280_cycles;
 
 				#ifdef DEBUG_X
 				printf("Chip ID  : 0x%.2x\n", ulp_bme280_chip_id);

@@ -94,8 +94,6 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 
 void app_main(void) {
 	//Initialisierung --------------------------------------------------------------------------------
-	version = VERSION;
-	revision = REVISION;
 
 	cb_rx_ack_handler = &rx_ack_handler;
 	cb_rx_data_handler = &rx_data_handler;
@@ -115,7 +113,7 @@ void app_main(void) {
 
 	// Main-Loop - Statusmeldung
 	while (true) {
-		//falls zuvor auf 2 Dataframes das ACK ausgebleiben ist -> Channel-Scan veranlassen
+		//falls zuvor auf 2 Dataframes das ACK ausgeblieben ist -> Channel-Scan veranlassen
 		if (cnt_no_response_serie > 1) wifi_channel = 0;
 		//ggf Channel-Scan veranlassen
 		if (wifi_channel == 0) wiog_set_channel(0);

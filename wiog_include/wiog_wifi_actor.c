@@ -45,7 +45,8 @@ uint8_t   wifi_channel;
 uint8_t	  chx;
 uint32_t  cnt_no_response;
 uint32_t  cnt_no_response_serie;
-uint32_t  cycle;
+uint32_t  cnt_tx_repeat;
+uint32_t  cycles;
 dev_uid_t my_uid; //Geräte-ID wird aus efuse_MAC berechnet
 
 uint32_t interval_ms = 60*1000;		//Standard-Interval für Actoren
@@ -295,6 +296,14 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 				(*cb_rx_ack_handler)(pHdr);	//Callback actor_main
 			}
 
+			else
+			//Reset
+			if (pHdr->vtype == RESET_DEV) {
+				printf("Restart now\n");
+				esp_restart();
+			}
+
+			else
 			//Empfang eines Datenframes vom RPi-Gateway
 			if (pHdr->vtype == DATA_FROM_GW) {
 				//Ack an Gateway senden
@@ -395,6 +404,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			}
 			set_species(ACTOR);	//wird in späterem ACK-Frame ggf wieder auf Repeater gesetzt
 		}
+		cnt_tx_repeat += ((wiog_header_t*) buf)->seq_ctrl;
 		free(evt.pdata);
 	}
 }
@@ -409,13 +419,18 @@ void set_management_data (management_t* pMan) {
 	pMan->uid = my_uid;
 	pMan->wifi_channel = wifi_channel;
 	pMan->species = species;
-	pMan->version = version;
-	pMan->revision = revision;
-//	pMan->cycle = cycle++;
+	pMan->cycles = ++cycles;
+	pMan->ulp_cycles = 0;
+	pMan->onTime = esp_timer_get_time() / 1000000;	//sek
+	pMan->cnt_no_response = cnt_no_response;
+	pMan->cnt_tx_repeat = cnt_tx_repeat;
 	pMan->cnt_no_response = cnt_no_response;
 	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
+	pMan->sz_heap = 0;	//mqtt-Ausgabe unterdrücken
+	#ifdef DEBUG_X
 	//freier Heap (Test Mem-Leaks)
 	pMan->sz_heap = xPortGetFreeHeapSize();
+	#endif
 	pMan->cnt_entries = 0;
 }
 
@@ -583,6 +598,7 @@ void wiog_set_channel(uint8_t ch) {
 void wiog_wifi_actor_init() {
     cnt_no_response = 0;
     cnt_no_response_serie = 0;
+    cnt_tx_repeat = 0;
     //Channel-Scan veranlassen
     wifi_channel = 0;
 

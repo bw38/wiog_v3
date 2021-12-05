@@ -8,8 +8,8 @@
 #ifndef WIOG_WIFI_SENSOR_H_
 #define WIOG_WIFI_SENSOR_H_
 
-static uint8_t version = 0;
-static uint8_t revision = 0;
+//static uint8_t version = 0;
+//static uint8_t revision = 0;
 
 extern uint16_t my_uid; //Geräte-ID wird aus efuse_MAC berechnet
 extern uint32_t rtc_interval_ms;

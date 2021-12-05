@@ -34,6 +34,7 @@ RTC_DATA_ATTR uint32_t rtc_cnt_no_scan;  //Fehlversuche Channelscan
 RTC_DATA_ATTR uint32_t rtc_no_response;  //Fehlversuche Übertragung
 RTC_DATA_ATTR uint8_t  rtc_no_response_serie; //Fehlversuche aufeinanderfolgend
 RTC_DATA_ATTR uint32_t rtc_onTime;		//Kumulation Prozessorzeit
+RTC_DATA_ATTR uint32_t rtc_tx_repeat;
 
 
 uint32_t ack_id = 0;		//Vergleich mit Tx-FrameID
@@ -68,7 +69,7 @@ IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t ty
 	//nur per UID adressierte Pakete akzeptieren
 	if (pHdr->uid != my_uid) return;
 	//Pakettypen filtern
-	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK_FROM_GW)) {
+	if ((pHdr->vtype == ACK_FOR_CHANNEL) || (pHdr->vtype == ACK_FROM_GW) || pHdr->vtype == RESET_DEV) {
 		wiog_event_rxdata_t frame;
 		memcpy(&frame.rx_ctrl, &ppkt->rx_ctrl, sizeof(wifi_pkt_rx_ctrl_t));
 		memcpy(&frame.wiog_hdr, pHdr, sizeof(wiog_header_t));
@@ -108,6 +109,13 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 		if ((rtc_wifi_channel == 0) && (pHdr->vtype == ACK_FOR_CHANNEL))
 		{
 			rtc_wifi_channel = pHdr->channel;	//Arbeitskanal wird in jedem WIOG-Header geliefert
+		}
+
+		else
+		//Reset
+		if (pHdr->vtype == RESET_DEV) {
+			printf("Restart now\n");
+			esp_restart();
 		}
 
 		else
@@ -166,10 +174,8 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 				esp_wifi_set_max_tx_power(MAX_TX_POWER);
 				tx_pwr_delta_dB = 6;	//next cycle mit höherer Tx-Leistung
 			}
-			//aktuelle Sendeleistung zu Testzwecken in Header eintragen
-			int8_t pwr;
-			esp_wifi_get_max_tx_power(&pwr);
-			((wiog_header_t*)buf)->txpwr = pwr;
+			//aktuelle Sendeleistung
+			esp_wifi_get_max_tx_power(&((wiog_header_t*)buf)->txpwr);
 
 			//Header-Signature
 			((wiog_header_t*)buf)->hdr_sign = crc16(buf, sizeof(wiog_header_t)-2);
@@ -183,6 +189,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 
 			((wiog_header_t*) buf)->seq_ctrl++ ;	//Sequence++
 		}
+		rtc_tx_repeat += ((wiog_header_t*) buf)->seq_ctrl;
 		free(evt.pdata);
 
 	}
@@ -199,10 +206,13 @@ void set_management_data (management_t* pMan) {
 	pMan->uid = my_uid;
 	pMan->wifi_channel = rtc_wifi_channel;
 	pMan->species = SENSOR;
-	pMan->version = version;
-	pMan->revision = revision;
+	pMan->cycles = ++rtc_cycles;
+	pMan->ulp_cycles = 0;			//wird bei Bedarf später in Messwerterfassung ersetzt
+	pMan->onTime = rtc_onTime;		// ms
 	pMan->cnt_no_response = rtc_no_response;
+	pMan->cnt_tx_repeat = rtc_tx_repeat;
 	ESP_ERROR_CHECK(esp_wifi_get_max_tx_power(&pMan->tx_pwr));
+	pMan->sz_heap = 0;
 	pMan->cnt_entries = 0;
 }
 
@@ -222,7 +232,6 @@ void send_data_frame(payload_t* buf, uint16_t len) {
 	tx_frame.wiog_hdr.channel = rtc_wifi_channel;
 	tx_frame.wiog_hdr.vtype = DATA_TO_GW;
 	tx_frame.wiog_hdr.frameid = esp_random();
-	tx_frame.wiog_hdr.tagD = 0;
 	tx_frame.tx_max_repeat = TX_REPEAT_CNT_MAX;	//max Wiederholungen, ACK erwartet
 
 	tx_frame.pdata = malloc(len);
@@ -314,6 +323,7 @@ void wiog_wifi_sensor_init() {
     	rtc_cycles = 0;
     	rtc_no_response = 0;
     	rtc_no_response_serie = 0;
+    	rtc_tx_repeat = 0;
     	rtc_interval_ms = SENSOR_DEF_SLEEP_TIME_MS;
     	rtc_tx_pwr = MAX_TX_POWER;
     } else {
@@ -399,7 +409,7 @@ void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {
 
 	rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
     esp_deep_sleep_disable_rom_logging();
-	rtc_onTime += esp_timer_get_time() / 1000;
+	rtc_onTime += (esp_timer_get_time() - tStart) / 1000;
 
 
 }
