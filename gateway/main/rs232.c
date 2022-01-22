@@ -16,6 +16,7 @@
 
 #include "rs232.h"
 #include "gw_main.h"
+#include "shotlist.h"
 
 
 //f. CRC-Summe
@@ -186,10 +187,15 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         							send_uart_frame(pl.data, pl.data_len, 'Y');
         						}
 
-        						else if (cFTyp == 'r') {
+        						else if (cFTyp == 'r') {	//ESP-GW Reset
         							esp_restart();
         						}
 
+        						else if (cFTyp == 'x') {	//Device resetten
+        							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
+        							shotlist_add(&sl_uid_reset, uid);
+
+        						}
         						else if (cFTyp == 'a') {	//Datenframe an Device senden
         							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
         							if (get_device_info(uid)->species == SENSOR) {

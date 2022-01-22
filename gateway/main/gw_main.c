@@ -18,6 +18,7 @@
 
 #include "gw_main.h"
 #include "rs232.h"
+#include "shotlist.h"
 
 
 //WIoG - Wireless Internet of Garden
@@ -37,6 +38,7 @@ uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 
 int64_t ts_ack = 0;
 uint8_t test = 0;
+
 
 // Prototypen
 // ------------
@@ -172,9 +174,9 @@ static void wiog_rx_processing_task(void *pvParameter) {
 			//Spontanrückgabe an device (bspw. Thresholds / ulp-max-cycles / ..)
 			ptx_frame->wiog_hdr.rdi32 = dib_get_return_value(evt.wiog_hdr.uid);
 
-			//Reset an Device senden
-//			ptx_frame->wiog_hdr.vtype = RESET_DEV;	//!!!!!!!!
-
+			//Reset an Device senden ?
+			if (shotlist_get(&sl_uid_reset, evt.wiog_hdr.uid))
+				ptx_frame->wiog_hdr.vtype = RESET_DEV;
 
 			//ACK 2ms verzögren
 			const esp_timer_create_args_t timer_args = {
@@ -394,6 +396,8 @@ void app_main(void) {
     LED_STATUS_ON;
     LED_GN_OFF;
     LED_RT_OFF;
+
+    shotlist_init(&sl_uid_reset, MAX_DEVICES);
 
 	//Rx-Queue -> Verarbeitung empfangener Daten
 	wiog_rx_queue = xQueueCreate(WIOG_RX_QUEUE_SIZE, sizeof(wiog_event_rxdata_t));

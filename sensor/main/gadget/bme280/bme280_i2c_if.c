@@ -87,7 +87,7 @@ int8_t bme280_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len,
     i2c_master_write_byte(cmd, (dev_addr << 1) | I2C_MASTER_WRITE, 1);
     for (int i=0; i<len; i++)
     {
-    	i2c_master_write_byte(cmd, reg_addr++, 1);
+    	i2c_master_write_byte(cmd, reg_addr + i, 1);
     	i2c_master_write_byte(cmd, reg_data[i], 1);
     }
     i2c_master_stop(cmd);

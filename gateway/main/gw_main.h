@@ -12,6 +12,7 @@
 
 #include "wiog_include/wiog_system.h"
 #include "wiog_include/wiog_data.h"
+#include "shotlist.h"
 
 
 //Status-LED
@@ -40,6 +41,10 @@ device_info_block_t dib;
 
 //Prioritäten und Slots (synchron in allen Nodes (incl gw))
 node_info_block_t nib;
+
+//Liste der (einmalig)zu resettenden UID
+shotlist_t sl_uid_reset;
+
 
 void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid);
 void broadcast_nib(node_info_block_t* pnib);

@@ -5,6 +5,7 @@ set(COMPONENT_PRIV_REQUIRES )
 set(COMPONENT_SRCS 
 	"gw_main.c"
 	"rs232.c"
+	"shotlist.c"
 	"wiog_include/wiog_system.c"
 	"wiog_include/wiog_data.c"
 )

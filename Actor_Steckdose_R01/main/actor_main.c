@@ -115,10 +115,6 @@ void app_main(void) {
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
 
-	#ifdef DEBUG_X
-		ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(MIN_TX_POWER));
-	#endif
-
 	// Main-Loop - Statusmeldung
 	while (true) {
 		//falls zuvor auf 2 Dataframes das ACK ausgebleiben ist -> Channel-Scan veranlassen
