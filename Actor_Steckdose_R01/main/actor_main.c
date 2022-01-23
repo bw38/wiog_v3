@@ -97,8 +97,8 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 
 void app_main(void) {
 	//Initialisierung --------------------------------------------------------------------------------
-	version = VERSION;
-	revision = REVISION;
+//	version = VERSION;
+//	revision = REVISION;
 
 	cb_rx_ack_handler = &rx_ack_handler;
 	cb_rx_data_handler = &rx_data_handler;

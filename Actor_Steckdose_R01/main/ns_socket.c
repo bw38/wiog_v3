@@ -182,7 +182,7 @@ void indicator_task(void* arg)
 	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));//create a queue to handle gpio event from isr
 
 	gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE;	//interrupt on both edges
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;	//interrupt on both edges
     io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;	//bit mask input
     io_conf.mode = GPIO_MODE_INPUT;				//set as input mode
     io_conf.pull_up_en = 1;						//enable pull-up mode

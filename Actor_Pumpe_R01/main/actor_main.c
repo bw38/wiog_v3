@@ -110,7 +110,6 @@ void app_main(void) {
 
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
-
 	// Main-Loop - Statusmeldung
 	while (true) {
 		//falls zuvor auf 2 Dataframes das ACK ausgeblieben ist -> Channel-Scan veranlassen

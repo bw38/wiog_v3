@@ -514,8 +514,7 @@ IRAM_ATTR void wiog_nib_spread_task(void *pvParameter) {
 	}
 }
 
-//Node sendet 1x je min Status-Frame mit Rx-Quality der empfangenen Devices
-
+//Node sendet Status-Frame mit Rx-Quality der empfangenen Devices
 IRAM_ATTR void wiog_snr_info_task(void *pvParameter) {
 	#define LOOP_DIV 6
 	uint8_t loop = 0;

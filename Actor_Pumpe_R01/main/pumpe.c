@@ -134,7 +134,6 @@ void monitoring_ns_state(void *pvParameters)
 
 // ----------------------------------------------------------------------------
 //Meldekontakte
-
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
     uint32_t gpio_num = (uint32_t) arg;
@@ -178,7 +177,7 @@ void indicator_task(void* arg)
 	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));//create a queue to handle gpio event from isr
 
 	gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE;	//interrupt on both edges
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;	//interrupt on both edges
     io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;	//bit mask input
     io_conf.mode = GPIO_MODE_INPUT;				//set as input mode
     io_conf.pull_up_en = 1;						//enable pull-up mode
@@ -203,7 +202,6 @@ void indicator_task(void* arg)
 
         	gpio_set_intr_type(IN_BIT_X, GPIO_INTR_NEGEDGE);
         	gpio_set_intr_type(IN_BIT_Y, GPIO_INTR_NEGEDGE);
-
         	if ((io_num == IN_BIT_X) && (gpio_get_level(IN_BIT_X) == 0))	//Außentaster
         	{
         		ns_up_time_t nsup;
@@ -215,10 +213,10 @@ void indicator_task(void* arg)
         		dbl_click_us = esp_timer_get_time();
         		point_in_time = esp_timer_get_time() + (int64_t)nvs_get_nsup_time(nsup) * 1000;
 
-            	if (!timer_task_is_running)
-            		xTaskCreate(timer_ns_task, "timer_ns", 2048, NULL, 5, &h_timer_ns);
+        		if (!timer_task_is_running)
+        			xTaskCreate(timer_ns_task, "timer_ns", 2048, NULL, 5, &h_timer_ns);
 
-            	main_send_immediately();	//Status an Gateway
+        		main_send_immediately();	//Status an Gateway
         	}
         	else if ((io_num == IN_BIT_Y) && (gpio_get_level(IN_BIT_Y) == 0)) //Innentaster (Longterm)
         	{
@@ -267,24 +265,25 @@ uint32_t nvs_get_nsup_time(ns_up_time_t upt)
 {
 	nvs_handle hnvs;
 	uint32_t res = 0;
-	uint32_t defres = 0;
+	uint32_t defres = DEFAULT_TINY_TIME_MS;
 	if (nvs_open("storage", NVS_READONLY, &hnvs) == ESP_OK)
 	{
 		switch(upt)
 		{
-		case TIME_TINY_MS:
-			if (nvs_get_u32(hnvs, "time_tiny_ms", &res) !=  ESP_OK) res = 0;
-			defres = DEFAULT_TINY_TIME_MS;
-			break;
-		case TIME_SMALL_MS:
-			if (nvs_get_u32(hnvs, "time_small_ms", &res) !=  ESP_OK) res = 0;
-			defres = DEFAULT_SMALL_TIME_MS;
-			break;
-		case TIME_LONG_MS:
-			if (nvs_get_u32(hnvs, "time_long_ms", &res) !=  ESP_OK) res = 0;
-			defres = DEFAULT_LONG_TIME_MS;
-			break;
+			case TIME_TINY_MS:
+				if (nvs_get_u32(hnvs, "time_tiny_ms", &res) !=  ESP_OK) res = 0;
+				defres = DEFAULT_TINY_TIME_MS;
+				break;
+			case TIME_SMALL_MS:
+				if (nvs_get_u32(hnvs, "time_small_ms", &res) !=  ESP_OK) res = 0;
+				defres = DEFAULT_SMALL_TIME_MS;
+				break;
+			case TIME_LONG_MS:
+				if (nvs_get_u32(hnvs, "time_long_ms", &res) !=  ESP_OK) res = 0;
+				defres = DEFAULT_LONG_TIME_MS;
+				break;
 		}
+		nvs_close(hnvs);
 	}
 	if ((res < MIN_NS_ON_TIME_MS) || (res > MAX_NS_ON_TIME_MS)) res = defres;
 
