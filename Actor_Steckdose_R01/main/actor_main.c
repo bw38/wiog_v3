@@ -10,12 +10,14 @@
 #include "nvs_flash.h"
 #include "string.h"
 
+#include "interface.h"
+#include "ns_socket.h"
+
 #include "wiog_include/wiog_system.h"
 #include "wiog_include/wiog_data.h"
 #include "wiog_include/wiog_wifi_actor.h"
 
-#include "interface.h"
-#include "ns_socket.h"
+
 
 #define VERSION  3
 #define REVISION 0
@@ -29,16 +31,27 @@ xQueueHandle measure_response_queue;	//Flags -> Mess-Ereigni
 
 //Prototypes
 void ShowDateTime(time_t dt);
+IRAM_ATTR void led_status_flash_task(void *pvParameter);
 
 // ----------------------------------------------------------------------------------------------
 
-//CallBack des Wiog-Headers nach Rx ACK, auch nach SNR-Data-Frame
+//CallBack nach Rx ACK
 void rx_ack_handler(wiog_header_t* pHdr) {
-//	LED_STATUS_OFF;
+	LED_STATUS_OFF;
 	#ifdef DEBUG_X
 		printf("[%04d]Rx-ACK\n", now());
 	#endif
 }
+
+//CallBack nach TxFrame
+void tx_req_handler(wiog_header_t* pHdr) {
+	if ((pHdr->vtype == DATA_TO_GW) && (pHdr->uid = my_uid))
+		LED_STATUS_ON;	//wird durch ACK wieder ausgeschaltet
+	else
+		xTaskCreate(led_status_flash_task, "led_status_flsh_task", 1024, NULL, 1, NULL);
+
+}
+
 
 //
 void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
@@ -58,7 +71,7 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 		case DF_I32:
 			pi32 = entry;
 			//erwartete DatenTypen verarbeiten
-			if (pi32->datatype == dt_bitmask) {
+			if (pi32->datatype == dt_ns_sw) {
 				if ((pi32->index == 0) && (pi32->value == 1))
 					device_set_control(1);	// On-Bitmask
 				else
@@ -67,6 +80,7 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 			if (pi32->datatype == dt_timer_sek) {
 				device_set_timer(pi32->value);
 			}
+
 			//printf("I32: %d |IX: %d |DT: %d\n", pi32->value, pi32->index, pi32->datatype);
 			break;
 
@@ -93,14 +107,20 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 
 // ----------------------------------------------------------------------------------------------
 
-
+IRAM_ATTR void led_status_flash_task(void *pvParameter) {
+	LED_STATUS_ON;
+	vTaskDelay(50 * MS);
+	LED_STATUS_OFF;
+	vTaskDelete(NULL);
+}
 
 void app_main(void) {
 	//Initialisierung --------------------------------------------------------------------------------
 //	version = VERSION;
-//	revision = REVISION;
+//  	revision = REVISION;
 
 	cb_rx_ack_handler = &rx_ack_handler;
+	cb_tx_req_handler = &tx_req_handler;
 	cb_rx_data_handler = &rx_data_handler;
 
 	//Ergebnis-Response-Queue
@@ -114,6 +134,8 @@ void app_main(void) {
 
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
+
+	interval_ms = 1500; //erste Sofortmeldung nach 500ms
 
 	// Main-Loop - Statusmeldung
 	while (true) {
@@ -129,10 +151,12 @@ void app_main(void) {
 		bzero(&pl, sizeof(pl));
 		set_management_data(&pl.man);
 
-		uint32_t bm = device_get_out_bitmask();
-		add_entry_I32(&pl, dt_bitmask, 0 ,0, bm);
-		bm = device_get_in_bitmask();
-		add_entry_I32(&pl, dt_bitmask, 1 ,0, bm);
+		uint32_t ns = 0;
+		if (device_get_out_bitmask() == NS_ON) ns = 1;
+		add_entry_I32(&pl, dt_ns_sw, 0, 0, ns);
+
+		uint32_t bm = device_get_in_bitmask();
+		add_entry_I32(&pl, dt_bitmask, 0, 0, bm);
 		//Send Data to GW
 		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
 		//ACK mit aktuellem Interval abwarten

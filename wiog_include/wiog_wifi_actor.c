@@ -23,11 +23,11 @@
 
 
 #ifndef DEBUG_X
-#define NIB_BC_INTERVAL_MS	 60000	//NIB 1x je Minute an andere Nodes weiterleiten
-#define SNR_INFO_INTERVAL_MS 30000
+#define NIB_BC_INTERVAL_MS	 60100	//NIB 1x je Minute an andere Nodes weiterleiten
+#define SNR_INFO_INTERVAL_MS 30500
 #else
-#define	NIB_BC_INTERVAL_MS	 20000
-#define SNR_INFO_INTERVAL_MS 30000
+#define	NIB_BC_INTERVAL_MS	 20100
+#define SNR_INFO_INTERVAL_MS 30500
 #endif
 
 
@@ -376,6 +376,7 @@ IRAM_ATTR void wiog_tx_processing_task(void *pvParameter) {
 			memcpy(&buf[sizeof(wiog_header_t)], evt.pdata, evt.data_len);
 		}
 
+		(*cb_tx_req_handler)(&evt.wiog_hdr);	//Callback actor_main
 
 		((wiog_header_t*) buf)->seq_ctrl = 0;
 		//max Wiederholungen bis ACK von GW oder Node
@@ -557,7 +558,8 @@ void wiog_set_channel(uint8_t ch) {
 			.crypt_data = false,
 			.data_len = 0,
 			.pdata = NULL,
-			.target_time = 0
+			.target_time = 0,
+			.tx_max_repeat = 0
 		};
 		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, ACTOR);
 		tx_frame.wiog_hdr.vtype = SCAN_FOR_CHANNEL;

@@ -32,12 +32,17 @@ void ShowDateTime(time_t dt);
 
 // ----------------------------------------------------------------------------------------------
 
-//CallBack des Wiog-Headers nach Rx ACK, auch nach SNR-Data-Frame
+//CallBack nach Rx ACK
 void rx_ack_handler(wiog_header_t* pHdr) {
 //	LED_STATUS_OFF;
 	#ifdef DEBUG_X
 		printf("[%04d]Rx-ACK\n", now());
 	#endif
+}
+
+//CallBack nach TxFrame
+void tx_req_handler(wiog_header_t* pHdr) {
+	//Dummy
 }
 
 //
@@ -58,11 +63,16 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 		case DF_I32:
 			pi32 = entry;
 			//erwartete DatenTypen verarbeiten
-			if (pi32->datatype == dt_bitmask) {
+			if (pi32->datatype == dt_ns_sw) {
 				if ((pi32->index == 0) && (pi32->value == 1))
-					pumpctrl_set_control(1);	// On-Bitmask
+					pumpctrl_set_control(1, 0);	// On-Bitmask
 				else
-					pumpctrl_set_control(0);	//Off-Bitmask
+					pumpctrl_set_control(0, 0);	//Off-Bitmask
+			}
+
+			if (pi32->datatype == dt_timer_sek) {
+				if ((pi32->index == 0) && (pi32->value >= 5)) //min 5Sek
+					pumpctrl_set_control(1, pi32->value);
 			}
 			//printf("I32: %d |IX: %d |DT: %d\n", pi32->value, pi32->index, pi32->datatype);
 			break;
@@ -96,6 +106,7 @@ void app_main(void) {
 	//Initialisierung --------------------------------------------------------------------------------
 
 	cb_rx_ack_handler = &rx_ack_handler;
+	cb_tx_req_handler = &tx_req_handler;
 	cb_rx_data_handler = &rx_data_handler;
 
 	//Ergebnis-Response-Queue
@@ -110,6 +121,9 @@ void app_main(void) {
 
     wiog_wifi_actor_init();
 	printf("Actor-UID: %d\n", my_uid);
+
+	interval_ms = 1500; //erste Sofortmeldung nach 500ms
+
 	// Main-Loop - Statusmeldung
 	while (true) {
 		//falls zuvor auf 2 Dataframes das ACK ausgeblieben ist -> Channel-Scan veranlassen
@@ -124,10 +138,11 @@ void app_main(void) {
 		bzero(&pl, sizeof(pl));
 		set_management_data(&pl.man);
 
-		uint32_t bm = pumpctrl_get_out_bitmask();
+		uint32_t ns = 0;
+		if (pumpctrl_get_out_bitmask() == NS_ON) ns = 1;
+		add_entry_I32(&pl, dt_ns_sw, 0 ,0, ns);
+		uint32_t bm = pumpctrl_get_in_bitmask();
 		add_entry_I32(&pl, dt_bitmask, 0 ,0, bm);
-		bm = pumpctrl_get_in_bitmask();
-		add_entry_I32(&pl, dt_bitmask, 1 ,0, bm);
 		//Send Data to GW
 		send_data_frame(&pl, pl.ix + sizeof(pl.man), ACTOR);
 		//ACK mit aktuellem Interval abwarten

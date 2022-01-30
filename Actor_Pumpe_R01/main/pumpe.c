@@ -27,13 +27,13 @@ typedef enum {
 	TIME_LONG_MS
 } ns_up_time_t;
 
-
-#define DEFAULT_TINY_TIME_MS	1 * 60 * 1000
-#define DEFAULT_SMALL_TIME_MS	7 * 60 * 1000
-#define DEFAULT_LONG_TIME_MS	20 * 60 * 1000
+#define MIN__ 60
+#define DEFAULT_TINY_TIME_MS	1 * MIN__ * 1000
+#define DEFAULT_SMALL_TIME_MS	7 * MIN__ * 1000
+#define DEFAULT_LONG_TIME_MS	20 * MIN__ * 1000
 
 #define MIN_NS_ON_TIME_MS		10 * 01 * 1000	//Min zulässige Einschaltzeit
-#define MAX_NS_ON_TIME_MS		25 * 60 * 1000	//Max zulässige Einschaltzeit, danach Zwangsreset
+#define MAX_NS_ON_TIME_MS		25 * MIN__ * 1000	//Max zulässige Einschaltzeit, danach Zwangsreset
 
 static int64_t point_in_time;	//Zeitpunkt Pumpenabschaltung (NS)
 
@@ -48,6 +48,7 @@ void nvs_set_nsup_time(ns_up_time_t upt, uint32_t time_ms);
 uint32_t nvs_get_nsup_time(ns_up_time_t upt);
 void set_out_bitmask(uint8_t ns);
 void indicator_task(void* arg);
+void timer_ns_task(void* arg);
 
 // ----------------------------------------------------------------------------------------------
 
@@ -75,10 +76,29 @@ void main_send_immediately() {
 	xQueueSend(hQResponse, &flag, portMAX_DELAY);
 }
 
-// Bitmaske für Pumpensteuerung
-void pumpctrl_set_control(uint32_t bm){
+// Pumpensteuerung durch externen Steuerbefehl, Zeitsteuerung
+// ti == 0 --> Long Timer
+// zulässige Timer-Werte: 5 sek .. LongTimer
+void pumpctrl_set_control(uint32_t x, uint32_t tsek) {
 	uint8_t ns = NS_OFF;
-	if (bm ==1) ns = NS_ON;
+	if (x == 1) {	//NS einschalten
+		int64_t ti = 0;
+		if (tsek == 0)
+			ti = (int64_t)nvs_get_nsup_time(TIME_LONG_MS) * 1000;
+		else if ((tsek >= 5) && (tsek*1000 <= nvs_get_nsup_time(TIME_LONG_MS)))
+			ti = tsek * 1000 * 1000;
+
+		if (ti > 0) {	// nur zulässige Timer-Werte
+			ns = NS_ON;
+			point_in_time = esp_timer_get_time() + ti;
+			if (!timer_task_is_running)
+				xTaskCreate(timer_ns_task, "timer_ns", 2048, NULL, 5, NULL);
+		}
+	}
+	else {	//alle anderen msg schalten NS aus
+		point_in_time = 0;	//ggf TimerTask selbst abschießen
+		ns = NS_OFF;
+	}
 	set_out_bitmask(ns);
 	main_send_immediately();
 }

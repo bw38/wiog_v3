@@ -7,6 +7,7 @@
 #ifndef MAIN_INTERFACE_H_
 #define MAIN_INTERFACE_H_
 
+
 //Ausgabe-Bits
 #define OUT_BIT_A1			GPIO_NUM_25
 #define INIT_OUT_BIT_A1		gpio_set_direction(OUT_BIT_A1, GPIO_MODE_INPUT_OUTPUT)
@@ -32,6 +33,9 @@
 
 #define NS_ON	0x02	//einziges zulässiges Bitmuster zum Einschalten der Niederspannung
 #define NS_OFF	0x01	//Niederspannung aus
+
+#define LED_STATUS_OFF		OUT_BIT_BL_OFF
+#define LED_STATUS_ON		OUT_BIT_BL_ON
 
 // Meldekontakte
 #define IN_BIT_X			GPIO_NUM_17

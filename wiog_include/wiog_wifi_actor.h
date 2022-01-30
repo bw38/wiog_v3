@@ -20,6 +20,7 @@ extern uint32_t cycles;
 extern uint32_t onTime;
 
 void (*cb_rx_ack_handler)(wiog_header_t* pHdr);
+void (*cb_tx_req_handler)(wiog_header_t* pHdr);
 void (*cb_rx_data_handler)(wiog_header_t* pHdr, payload_t* pl, int len);
 
 void wiog_wifi_actor_init();

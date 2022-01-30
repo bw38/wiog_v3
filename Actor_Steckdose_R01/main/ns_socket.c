@@ -53,7 +53,6 @@ void device_init(xQueueHandle hQR) {
     //Eingabe Interrupt -------------------------------------------------------------
     //Indicatoren
     xTaskCreate(indicator_task, "indicator", 2048, NULL, 10, NULL); //start gpio task
-
     xTaskCreate(ns_time_point, "ns_state", 2048, NULL, 15, NULL); //Überwachung Schaltzustand NS
 }
 
@@ -80,37 +79,13 @@ void device_set_control(uint32_t bm){
 	xTaskCreate(main_send_delayed_task, "main_send_task", 1024, NULL, 1, NULL);
 }
 
+//NS-On + Aus-Schalttimer in Sekunden 5 .. n sek
 void device_set_timer(uint32_t sek) {
-	point_in_time = esp_timer_get_time() + sek*1000*1000;
-	device_set_control(1);
+	if (sek > 4) {
+		point_in_time = esp_timer_get_time() + sek*1000*1000;
+		device_set_control(1);
+	}
 }
-
-/*
-//Gerätestatus zurückmelden
-void device_get_status()
-{
-	//Schaltzustand zurückliefern
-	union data_entry_t dem = {
-			.type = SW_ONOFF,
-			.status = 0,
-			.value = get_out_bitmask() == NS_ON};
-	main_add_entry(dem);
-
-	//Bitmaske des Tasters negiert zurückliefern
-	union data_entry_t dei = {
-			.type = SW_INDICATOR,
-			.status = 0,
-			.value = gpio_get_level(IN_BIT_X) ^ 1};	//Low-Activ
-	main_add_entry(dei);
-
-	//Restlaufzeit in Sek
-	union data_entry_t det = {
-			.type = SW_ON_SEK,
-			.status = 0,
-			.value = (point_in_time - esp_timer_get_time()) / 1e6};
-	main_add_entry(det);
-}
-*/
 
 //Bitmaske des Tasters negiert zurückliefern
 uint32_t device_get_in_bitmask() {
@@ -157,6 +132,7 @@ void ns_time_point(void *pvParameters) {
 			//NS Off bei Zeitüberschreitung
 			if ((point_in_time > 0) &&(esp_timer_get_time() > point_in_time)) {
 				set_out_bitmask(NS_OFF);
+				point_in_time = 0;	//Timer deaktivieren
 				main_send_immediately();
 			}
 		}

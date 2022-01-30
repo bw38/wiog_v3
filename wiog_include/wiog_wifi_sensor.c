@@ -255,7 +255,8 @@ void wiog_set_channel(uint8_t ch) {
 			.crypt_data = false,
 			.data_len = 0,
 			.pdata = NULL,
-			.target_time = 0	//sofort senden
+			.target_time = 0,
+			.tx_max_repeat = 0
 		};
 		tx_frame.wiog_hdr = wiog_get_dummy_header(GATEWAY, SENSOR);
 		tx_frame.wiog_hdr.vtype = SCAN_FOR_CHANNEL;

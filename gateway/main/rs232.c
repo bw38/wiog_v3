@@ -192,8 +192,9 @@ IRAM_ATTR void rx_uart_event_task(void *pvParameters)
         						}
 
         						else if (cFTyp == 'x') {	//Device resetten
-        							dev_uid_t uid = ((payload_t*)pl.data)->man.uid;
+        							dev_uid_t uid = pl.data[0] + (pl.data[1] << 8);
         							shotlist_add(&sl_uid_reset, uid);
+        							logLV("Device-Reset: ", uid);
 
         						}
         						else if (cFTyp == 'a') {	//Datenframe an Device senden

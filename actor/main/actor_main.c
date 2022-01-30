@@ -35,12 +35,17 @@ void ShowDateTime(time_t dt);
 
 // ----------------------------------------------------------------------------------------------
 
-//CallBack des Wiog-Headers nach Rx ACK, auch nach SNR-Data-Frame
+//CallBack nach Rx ACK
 void rx_ack_handler(wiog_header_t* pHdr) {
 //	LED_STATUS_OFF;
 	#ifdef DEBUG_X
 		printf("[%04d]Rx-ACK\n", now());
 	#endif
+}
+
+//CallBack nach TxFrame
+void tx_req_handler(wiog_header_t* pHdr) {
+//	LED_STATUS_ON
 }
 
 //
@@ -96,10 +101,9 @@ void rx_data_handler(wiog_header_t* pHdr, payload_t* pl, int len)  {
 
 void app_main(void) {
 	//Initialisierung --------------------------------------------------------------------------------
-	version = VERSION;
-	revision = REVISION;
 
 	cb_rx_ack_handler = &rx_ack_handler;
+	cb_tx_req_handler = &tx_req_handler;
 	cb_rx_data_handler = &rx_data_handler;
 
 	//Ergebnis-Response-Queue

@@ -53,7 +53,7 @@
 
 
 extern void pumpctrl_init(xQueueHandle hQR);
-extern void pumpctrl_set_control(uint32_t bm);
+extern void pumpctrl_set_control(uint32_t x, uint32_t tsek);
 extern uint32_t pumpctrl_get_in_bitmask();
 extern uint32_t pumpctrl_get_out_bitmask();
 

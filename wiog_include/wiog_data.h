@@ -43,6 +43,7 @@ typedef enum {
 	dt_bitmask  = 9,
 	dt_timer_sek= 10,
 	dt_sht3x	= 11,
+	dt_ns_sw  =   12,
 
 	dt_runtime_ms = 21,
 	dt_cycle   = 22,
