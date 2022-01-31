@@ -21,9 +21,9 @@
 //Geräteauswahl (nur eine UID zulässig -----------------------
 //#define UID40319	// ESP32 - TestPlug, div Sensoren
 //#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
-#define UID27963	// ESP32 - AM2302 - Rohrmelder or, Li-Bat Direktversorgung
+//#define UID27963	// ESP32 - AM2302 - Rohrmelder or, Li-Bat Direktversorgung
 //#define UID24931	// ESP32 - AM2302 - Rohrmelder gr, Li-Bat Direktversorgung
-//#define UID45425c	// ESP32S2 - TestPlug, div Sensoren
+#define UID45425c	// ESP32S2 - TestPlug, div Sensoren
 
 
 // -----------------------------------------------------------
@@ -209,7 +209,7 @@
 
 #define RFLAG_UBAT			1
 #define RFLAG_SHT31_RISCV	2
-
+#undef DEBUG_X
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
 
 #define UBAT_ADC_CHN		ADC1_CHANNEL_3		//GPIO 4 Messeingang

@@ -11,6 +11,7 @@
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "esp32s2/ulp_riscv.h"
+#include <math.h>
 
 #include "wiog_include/wiog_system.h"
 #include "wiog_include/wiog_data.h"
@@ -97,6 +98,15 @@ void rx_data_handler(wiog_header_t* pHdr)  {
 		#ifdef DEBUG_X
 		printf("Thresholds: %.1f°C | %.1f%%\n",
 				ulp_temp_threshold / 10.0, ulp_humi_threshold / 10.0);
+		printf("Max ULP Cycles: %d\n", ulp_ncycles_force_wake);
+		#endif
+	#endif
+
+	#ifdef RFLAG_DS18B20_FSM
+		ulp_temp_threshold = round ((pHdr->rdi8A / 100.0) * 16.0);			//A * 0.01°C	[0..2.55°C]
+		ulp_ncycles_force_wake = pHdr->rdi8D;		//nach n ulp-cycles zwangsaufwecken
+		#ifdef DEBUG_X
+		printf("Thresholds: %.1f°C\n", ulp_temp_threshold / 16.0);
 		printf("Max ULP Cycles: %d\n", ulp_ncycles_force_wake);
 		#endif
 	#endif
@@ -329,12 +339,12 @@ void app_main(void) {
 	if (i2c_mport < 0) i2c_mport = i2c_master_init();
 	if (i2c_mport >= 0) {
 		//Messung initialisieren und starten
-		if (bme280_i2c_init(i2c_mport, waked_up) == ESP_OK) {
+		if (bme280_i2c_init(i2c_mport, waked_up) == 0) {
 			bme280_i2c_start(measure_response_queue, RFLAG_BME280);
-			flags |= RFLAG_BME280; // in Queue auf Ergebnis warten
 		} else {
 			ESP_LOGE("BME280", "Init Error");
 		}
+		flags |= RFLAG_BME280; // in Queue auf Ergebnis warten
 	}
 	#endif	//BME280
 
@@ -434,6 +444,9 @@ void app_main(void) {
 			int32_t temperature = (((int32_t)(ulp_temp_raw) & UINT16_MAX)*100) / 16.0;
 			int8_t status = ulp_crc_err;
 			add_entry_I32(&pl, dt_ds18b20, 0, status, temperature);
+			rtc_fsm_cycles += ulp_cycles & 0xFFFF;	//Gesamtzähler ulp-cycles
+			ulp_cycles = 0;	//Rücksetzen f. nächsten Maincyle
+			pl.man.ulp_cycles = rtc_fsm_cycles;
 			#ifdef DEBUG_X
 			printf("[%04d]DS18B20 Temp: %.2f°C\n", now(), temperature / 100.0);
 			#endif
@@ -571,7 +584,7 @@ void app_main(void) {
 	}
 
 	if (flags != 0)  { //Funktionsfehler
-
+		add_entry_I32(&pl, dt_res_err, 0, 0, flags);	//Ergebnis fehlt
 	}
 
 	//Send Data to GW
