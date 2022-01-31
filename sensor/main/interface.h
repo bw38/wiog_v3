@@ -209,7 +209,7 @@
 
 #define RFLAG_UBAT			1
 #define RFLAG_SHT31_RISCV	2
-#undef DEBUG_X
+#undef DEBUG_Xx
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
 
 #define UBAT_ADC_CHN		ADC1_CHANNEL_3		//GPIO 4 Messeingang
@@ -221,6 +221,12 @@
 #define	USE_ULP_RISCV
 #define I2C_MASTER_SDA_IO 	8
 #define I2C_MASTER_SCL_IO 	9
+
+//StepUp-Regler-Steuerung
+#define USE_STEPUP_CTRL
+#define GPIO_STEPUP_CTRL	3
+#define RTC_IO_STEPUP_CTRL	3
+
 #endif	//--------------------------------------------------------
 
 
