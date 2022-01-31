@@ -144,11 +144,7 @@ static void wiog_rx_processing_task(void *pvParameter) {
 
 		else
 		//Datenpaket von Device auswerten
-		if  ((pHdr->vtype == DATA_TO_GW)
-//&& (pHdr->seq_ctrl > 1)
-//&& (pHdr->tagB >= 1) && (pHdr->mac_from[5] == REPEATER)
-//&& (pHdr->mac_from[5] != SENSOR)
-			) {
+		if  (pHdr->vtype == DATA_TO_GW) {
 			//Ack an Device senden
 			wiog_event_txdata_t* ptx_frame = malloc(sizeof(wiog_event_txdata_t));
 			ptx_frame->crypt_data = false,

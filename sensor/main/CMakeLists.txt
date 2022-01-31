@@ -31,9 +31,9 @@ set(ulp_app_name ulp_${COMPONENT_NAME})
 #    which should not be added to COMPONENT_SRCS.
 set(ulp_riscv_S_sources 
 #		"ulp/fsm_ds18b20/ds18b20.S"
-#		"ulp/fsm_am2302/esp32_fsm_am2302.S"
+		"ulp/fsm_am2302/esp32_fsm_am2302.S"
 #		"ulp/riscv_bme280/riscv_bme280_i2c_if.c" "ulp/riscv_bme280/BME280_driver-master/bme280.c"
-		"ulp/riscv_sht31/riscv_sht31.c"
+#		"ulp/riscv_sht31/riscv_sht31.c"
 )
 
 #
