@@ -267,7 +267,7 @@ IRAM_ATTR static void wiog_rx_processing_task(void *pvParameter)
 
 				else
 				//ACK broadcasten
-				if ((pHdr->vtype == ACK_TO_GW) || (pHdr->vtype == ACK_FROM_GW))  {
+				if ((pHdr->vtype == ACK_TO_GW) || (pHdr->vtype == ACK_FROM_GW) || (pHdr->vtype == RESET_DEV))  {
 					acked_fid = pHdr->frameid;
 					repeat_frame(evt);
 				}
