@@ -23,7 +23,6 @@
 #define MAX_NODES	4			//Max n-1 Nodes + 1GW lassen sich verwalten
 #define MAX_SLOTS	4			//Anzahl der Node-Time-Slots
 
-
 //Wertebereich esp_wifi_set_max_tx_power(x)
 #ifdef DEBUG_X	//reduzierte Leistung im Debug-Modus
 #define MAX_TX_POWER 84 //20  	// => 5dBm
@@ -91,6 +90,7 @@ static const mac_addr_t mac_repeater = { 0xf9, 0xfe, 0x36, 0x96, MAC_BYTE5, 0x04
 typedef uint16_t dev_uid_t;	//16 Bit Geräte-UID -> Gefahr der ID-Dopplung !
 
 #define GW_UID 0xFFFF
+
 
 //Wakeup-Quellen der Sensoren
 typedef enum {
@@ -241,7 +241,7 @@ void nvs_set_wifi_channel(uint8_t ch);
 int32_t nvs_get_sysvar(uint8_t ix);
 void nvs_set_sysvar(uint8_t ix, int32_t value);
 int now();
-int64_t tStart;
+extern int64_t tStart;
 
 //Debug
 #ifdef DEBUG_X

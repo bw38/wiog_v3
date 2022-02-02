@@ -9,13 +9,13 @@
 #include "esp_system.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
-#include "driver/gpio.h"
+#include "hal/gpio_types.h"
 #include "string.h"
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include "esp32/ulp.h"
+#include "ulp_common.h"
 
 #include "wiog_system.h"
 #include "wiog_data.h"
@@ -52,7 +52,7 @@ xQueueHandle wiog_rx_queue;
 #define WIOG_TX_QUEUE_SIZE 6
 xQueueHandle wiog_tx_queue;
 
-
+void (*cb_rx_handler)(wiog_header_t* pHdr);
 
 //Wifi-Rx-Callback im Sniffermode - Daten in die Rx-Queue stellen
 IRAM_ATTR void wiog_receive_packet_cb(void* buff, wifi_promiscuous_pkt_type_t type)

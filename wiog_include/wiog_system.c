@@ -15,7 +15,9 @@
 #include "nvs_flash.h"
 #include "esp_err.h"
 
-#include "mbedtls/aes.h"
+#include "/home/joerg/Development/esp32/esp-idf/components/mbedtls/port/include/aes/esp_aes.h"
+//#include "aes/esp_aes.h"
+//#include "mbedtls/aes.h"
 #include "esp32/rom/aes.h"
 #include "esp32/rom/crc.h"
 
@@ -269,6 +271,7 @@ void nvs_set_sysvar(uint8_t ix, int32_t value) // 3 ms
 // ------------------------------------------------------------------------
 
 // Time (Debug)
+int64_t tStart;
 int now(){
 	return (esp_timer_get_time() - tStart) / 1000;
 }

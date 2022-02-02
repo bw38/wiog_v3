@@ -16,7 +16,7 @@ extern uint32_t rtc_interval_ms;
 extern uint32_t rtc_cycles;
 extern uint32_t rtc_onTime;
 
-void (*cb_rx_handler)(wiog_header_t* pHdr);
+extern void (*cb_rx_handler)(wiog_header_t* pHdr);
 
 void wiog_wifi_sensor_init();
 void set_management_data (management_t* pMan);

@@ -225,7 +225,7 @@
 //StepUp-Regler-Steuerung
 #define USE_STEPUP_CTRL
 #define GPIO_STEPUP_CTRL	GPIO_NUM_3
-#define RTC_IO_STEPUP_CTRL	3
+#define RTC_IO_STEPUP_CTRL	GPIO_NUM_3
 
 #endif	//--------------------------------------------------------
 

@@ -5,12 +5,12 @@
 #include "string.h"
 #include "esp_sleep.h"
 #include "esp_log.h"
-#include "esp32/ulp.h"
+//#include "esp32/ulp.h"
 #include "soc/rtc.h"
 #include "driver/rtc_io.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
-#include "esp32s2/ulp_riscv.h"
+#include "ulp_riscv.h"
 #include "rom/gpio.h"
 #include <math.h>
 
@@ -247,7 +247,7 @@ test++;
 void app_main(void) {
 printf("Test: %d\n", test);
 GPIO_OUTPUT_SET(3,1);
-	tStart = esp_timer_get_time();
+	tStart = 0; //esp_timer_get_time();
 	cb_rx_handler = &rx_data_handler;
 //rtc_gpio_hold_dis(GPIO_STEPUP_CTRL);
 	init_nvs();

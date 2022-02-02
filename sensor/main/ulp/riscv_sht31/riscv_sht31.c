@@ -13,10 +13,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-//relative pathe are not found in eclipse - IDF ok
-#include "ulp_riscv/ulp_riscv.h"
-#include "ulp_riscv/ulp_riscv_utils.h"
-#include "ulp_riscv/ulp_riscv_gpio.h"
+//relative paths are not found in eclipse - IDF ok
+#include "ulp_riscv.h"
+#include "ulp_riscv_utils.h"
+#include "ulp_riscv_gpio.h"
 
 uint32_t sht31_sda = 0;	//individual ports
 uint32_t sht31_scl = 0;
@@ -244,10 +244,6 @@ int main (void) {
     	mtemp = sht31_temp;
     	mhumi = sht31_humi;
     	mcycle = 0;
-//ulp_riscv_gpio_init(3);
-//ulp_riscv_gpio_output_enable(3);
-//ulp_riscv_gpio_output_level(3, 1);
-//ulp_riscv_gpio_output_level(3, 0);
     	ulp_riscv_wakeup_main_processor();
     }
 
