@@ -15,7 +15,7 @@
 
 #include "wiog_include/wiog_system.h"
 
-#define WORKING_CHANNEL 3
+#define WORKING_CHANNEL 7
 
 #define	LED_GPIO_PIN		GPIO_NUM_4
 #define	WIFI_CHANNEL_MAX	13

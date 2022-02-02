@@ -219,12 +219,12 @@
 #define VREF				1100				//Dummy - 2Point
 
 #define	USE_ULP_RISCV
-#define I2C_MASTER_SDA_IO 	8
-#define I2C_MASTER_SCL_IO 	9
+#define I2C_MASTER_SDA_IO 	GPIO_NUM_8
+#define I2C_MASTER_SCL_IO 	GPIO_NUM_9
 
 //StepUp-Regler-Steuerung
 #define USE_STEPUP_CTRL
-#define GPIO_STEPUP_CTRL	3
+#define GPIO_STEPUP_CTRL	GPIO_NUM_3
 #define RTC_IO_STEPUP_CTRL	3
 
 #endif	//--------------------------------------------------------

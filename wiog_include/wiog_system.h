@@ -34,8 +34,6 @@
 #endif
 #define IDEAL_SNR 12		//(dB) Sensoren einpegeln
 
-//#define SYSTEM_ID 19950410	//z. systemweiten Prüfung der Gütligkeit der Daten
-
 #define SEK	1e3		//ms -> Sek
 #define MIN 60e3	//ms -> Min
 #define STD 60*MIN	//ms -> Std
@@ -63,18 +61,12 @@
 
 #define AES_KEY		0xf4, 0x45, 0xfa, 0xf7, 0x5b, 0x5a, 0x44, 0x53,\
 			 	 	0x01, 0x1a, 0x4b, 0xb2, 0xdd, 0x45, 0x78, 0xda
-/*,\
-					0xf7, 0xda, 0x1a, 0x51, 0x7a, 0xf8, 0x5a, 0xfc,\
-					0x7a, 0xef, 0x65, 0x34, 0x00, 0x00, 0x00, 0x00
-*/
+
 #define AES_IV 		0xf4, 0x15, 0x0d, 0x30, 0x4f, 0x00, 0xe1, 0x80,\
 					0x98, 0x49, 0x1a, 0xf9, 0x59, 0x49, 0x68, 0x49
 
 
 typedef uint8_t mac_addr_t[6];
-
-#define MAC_BYTE5 0xc4    // Testumgebung    (testgw)
-//#define MAC_BYTE5 0xc8		// Arbeitsumgebung (raspigw)
 
 static const wifi_country_t wifi_country_de = {
 		.cc="DE",
@@ -83,6 +75,9 @@ static const wifi_country_t wifi_country_de = {
 		.max_tx_power=MAX_TX_POWER,
 		.policy=WIFI_COUNTRY_POLICY_AUTO
 };
+
+#define MAC_BYTE5 0xc4    // Testumgebung    (testgw)
+//#define MAC_BYTE5 0xc8		// Arbeitsumgebung (raspigw)
 
 //Netzwerk-Kennung
 //LSB in Byte1 muss 1 sein, sonst unkrontrollierte Paketwiederholungen esp_wifi_80211_tx (nur esp8266 rtos)

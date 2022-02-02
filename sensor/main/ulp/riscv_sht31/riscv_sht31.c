@@ -244,6 +244,10 @@ int main (void) {
     	mtemp = sht31_temp;
     	mhumi = sht31_humi;
     	mcycle = 0;
+//ulp_riscv_gpio_init(3);
+//ulp_riscv_gpio_output_enable(3);
+//ulp_riscv_gpio_output_level(3, 1);
+//ulp_riscv_gpio_output_level(3, 0);
     	ulp_riscv_wakeup_main_processor();
     }
 
