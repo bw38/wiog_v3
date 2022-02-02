@@ -1,0 +1,43 @@
+Allgemein:
+    <-- bw38/[UID]/devrst/0x80  x   Device in nächsten ACK-Freame resetten (ix >= 0x80 | x nicht ausgewertet
+
+    --> bw38/[UID]/ubat/0           Spannung in mV (nur Sensoren)
+    --> bw38/[UID]/cycle/0          Betriebszyklus
+    --> bw38/[UID]/ulpcyc/0         FSM/RISC-Bertriebszyklus (nur Sensoren)
+    --> bw38/[UID]/lost/0           verlorene Pakete
+    --> bw38/[UID]/txrep/0          wiederholte Pakete
+    --> bw38/[UID]/txpwr/0          Tx-Leistungsindex
+    --> bw38/[UID]/ontime/0         Betriebszeit (Sensoren in ms / Actoren in sek)
+    --> bw38/[UID]/reserr/0         fehlender Messwert (rflag)
+
+Actor_Steckdose_R01
+    [34135]
+        --> bw38/[UID]/ns_sw/0  	    [0|1]  1 = NS-Off | 2 = NS-On
+        --> bw38/[UID]/bitmask/0        [0|1]  0 = BtUp   | 1 = BtDwn
+    
+        <-- bw38/[UID]/ns_sw/0x80 	    [0|1]  0 = NS-Off | 1 = NS-On
+        <-- bw38/[UID]/timer_sek/0x80   [5..n] NS-On Laufzeit in Sek
+
+
+Actor_Pumpe_R01
+    [02085]
+        --> bw38/[UID]/ns_sw/0          [0|1]  0 = NS-Off  | 1 = NS-On
+        --> bw38/[UID]/bitmask/0        [0..2] 0 = BtAllUp | 1 = BtOutDwn | 2 = BtInDwn | 3 = BtAllDwn
+    
+        <-- bw38/[UID]/ns_sw/0x80       [0|1]  0 = NS-Off  | 1 = NS-On
+        <-- bw38/[UID]/timer_sek/0x80   [5..n) NS-On Laufzeit in Sek, n <= LogTimer, alle anderen Werte ungültig
+
+
+
+Sensor AM2302 Rohrmelder or/gr"
+    [27963](or), [24931](gr)
+        --> bw38/[UID]/am2302/0         Temperatur * 10 °C
+        --> bw38/[UID]/am2302/1         Humidity * 10 %
+        --> bw38/[UID]/ubat/0           Spannung mV
+
+
+
+
+Anmerkungen:
+	--> gateway from device
+	<-- gateway to   device
