@@ -1,10 +1,12 @@
 # Set usual component variables
 set(COMPONENT_SRCS 		
 		"sensor_main.c" 
-		"wiog_include/wiog_system.c"
+    	"wiog_include/wiog_system.c"
     	"wiog_include/wiog_data.c"
-    	"wiog_include/wiog_wifi_sensor.c"
+    	"wiog_include/wiog_wifi_sensor.c" 
+    	
     	"gadget/ubat/ubat.c"
+    	"gadget/bme280/bme280_i2c_if.c" "gadget/bme280/BME280_driver-master/bme280.c"		
 )
     	
 set(COMPONENT_ADD_INCLUDEDIRS "")
@@ -28,7 +30,10 @@ set(ulp_app_name ulp_${COMPONENT_NAME})
 #    Files should be placed into a separate directory (in this case, ulp/),
 #    which should not be added to COMPONENT_SRCS.
 set(ulp_riscv_S_sources 
-		"ulp/riscv_sht31/riscv_sht31.c"  
+#		"ulp/riscv_bme280/riscv_bme280_i2c_if.c" "ulp/riscv_bme280/BME280_driver-master/bme280.c"
+#		"ulp/riscv_sht31/riscv_sht31.c"
+#		"ulp/fsm_am2302/esp32_fsm_am2302.S"
+		"ulp/fsm_ds18b20/ds18b20.S"
 )
 
 #
@@ -42,3 +47,4 @@ set(ulp_exp_dep_srcs
 # 4. Call function to build ULP binary and embed in project using the argument
 #    values above.
 ulp_embed_binary(${ulp_app_name} "${ulp_riscv_S_sources}" "${ulp_exp_dep_srcs}")
+

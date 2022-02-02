@@ -205,10 +205,9 @@
 
 
 #ifdef UID45425c			// Testboard ESP32S2 Plug - RISC-V SHT31 --------------------------------
-#include "gadget/ubat/ubat.h"
-
 #define RFLAG_UBAT			1
 #define RFLAG_SHT31_RISCV	2
+
 #undef DEBUG_Xx
 #define	WAKEUP_SOURCE		WS_ULP				//wakeup_src_t WS_ULP | WS_MAIN;
 

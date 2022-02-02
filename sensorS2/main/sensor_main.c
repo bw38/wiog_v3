@@ -1,30 +1,33 @@
+
+
 #include "freertos/FreeRTOS.h"
 #include "esp_system.h"
 #include "esp_event.h"
-#include "nvs_flash.h"
+//#include "nvs_flash.h"
 #include "string.h"
 #include "esp_sleep.h"
-#include "esp_log.h"
+//#include "esp_log.h"
 //#include "esp32/ulp.h"
+
 #include "soc/rtc.h"
 #include "driver/rtc_io.h"
-#include "driver/gpio.h"
+//#include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "ulp_riscv.h"
 #include "rom/gpio.h"
 #include <math.h>
 
-#include "interface.h"
-
 #include "wiog_include/wiog_system.h"
 #include "wiog_include/wiog_data.h"
 #include "wiog_include/wiog_wifi_sensor.h"
+
+#include "interface.h"
 
 #include "ulp_main.h"  //ulp_xxx.h wird automatisch generiert
 
 
 
-//Gerätesprzifische Header f. Mainprocess
+//gerätespezifische Header f. Mainprocess
 #ifdef RFLAG_UBAT
 #include "gadget/ubat/ubat.h"
 #endif

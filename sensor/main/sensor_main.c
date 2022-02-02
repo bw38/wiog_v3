@@ -5,14 +5,16 @@
 #include "string.h"
 #include "esp_sleep.h"
 #include "esp_log.h"
-//#include "esp32/ulp.h"
+#include "esp32/ulp.h"
 #include "soc/rtc.h"
 #include "driver/rtc_io.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
-#include "ulp_riscv.h"
+#include "driver/adc.h"
 #include "rom/gpio.h"
 #include <math.h>
+
+#include "interface.h"
 
 #include "wiog_include/wiog_system.h"
 #include "wiog_include/wiog_data.h"
@@ -20,7 +22,7 @@
 
 #include "ulp_main.h"  //ulp_xxx.h wird automatisch generiert
 
-#include "interface.h"
+
 
 //Gerätesprzifische Header f. Mainprocess
 #ifdef RFLAG_UBAT
@@ -53,7 +55,7 @@ RTC_DATA_ATTR uint32_t test = 0;
 #define MEASURE_QUEUE_SIZE 32
 xQueueHandle measure_response_queue;	//Flags -> Mess-Ereignis an main
 
-i2c_port_t i2c_mport = -1;
+static i2c_port_t i2c_mport = -1;
 
 //SystemVariablen zur Steurung der Sensoren
 //#define MAX_SYSVAR  8 //Systemvariablen [0..7], Data-Entries im Quittungspaket
@@ -177,7 +179,7 @@ void init_ulp() {
 	//ULP-Clockspeed
 	uint32_t rtc_8md256_period = rtc_clk_cal(RTC_CAL_8MD256, 100);
 	if (rtc_8md256_period > 0) {	//nach esp_restart() => 0
-		uint32_t rtc_fast_freq_hz = 1000000ULL * (1 << RTC_CLK_CAL_FRACT) * 256 / rtc_8md256_period;
+		uint32_t rtc_fast_freq_hz = 1000000ULL * (1 << 19 /*RTC_CLK_CAL_FRACT*/) * 256 / rtc_8md256_period;
 		printf("RTC FastFreq: %dHz\n", rtc_fast_freq_hz);
 	}
    	printf("[%04d]Initializing ULP\n", now());

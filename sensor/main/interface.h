@@ -20,10 +20,10 @@
 
 //Geräteauswahl (nur eine UID zulässig -----------------------
 //#define UID40319	// ESP32 - TestPlug, div Sensoren
-//#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
+#define UID09073	// ESP32 - LiPo-Basisboard, Stepup & HAT - BME280 / DS18B20
 //#define UID27963	// ESP32 - AM2302 - Rohrmelder or, Li-Bat Direktversorgung
 //#define UID24931	// ESP32 - AM2302 - Rohrmelder gr, Li-Bat Direktversorgung
-#define UID45425c	// ESP32S2 - TestPlug, div Sensoren
+//#define UID45425c	// ESP32S2 - TestPlug, div Sensoren
 
 
 // -----------------------------------------------------------

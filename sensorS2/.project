@@ -1004,21 +1004,6 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/touch_element/touch_slider.c</location>
 		</link>
 		<link>
-			<name>esp_idf_components/ulp/ulp.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/ulp/ulp.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/ulp/ulp_macro.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/ulp/ulp_macro.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/ulp/ulp_riscv.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/ulp/ulp_riscv.c</location>
-		</link>
-		<link>
 			<name>esp_idf_components/unity/unity_port_esp32.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/unity/unity_port_esp32.c</location>
@@ -1267,11 +1252,6 @@
 			<name>esp_idf_components/efuse/src/esp_efuse_api.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/efuse/src/esp_efuse_api.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/efuse/src/esp_efuse_api_key_esp32xx.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/efuse/src/esp_efuse_api_key_esp32xx.c</location>
 		</link>
 		<link>
 			<name>esp_idf_components/efuse/src/esp_efuse_fields.c</name>
@@ -1817,11 +1797,6 @@
 			<name>esp_idf_components/freertos/esp_additions/task_snapshot.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/freertos/esp_additions/task_snapshot.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/hal/esp32s2/adc_hal.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/hal/esp32s2/adc_hal.c</location>
 		</link>
 		<link>
 			<name>esp_idf_components/hal/esp32s2/brownout_hal.c</name>
@@ -2799,11 +2774,6 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/md5.c</location>
 		</link>
 		<link>
-			<name>esp_idf_components/mbedtls/mbedtls/library/md_wrap.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/md_wrap.c</location>
-		</link>
-		<link>
 			<name>esp_idf_components/mbedtls/mbedtls/library/memory_buffer_alloc.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/memory_buffer_alloc.c</location>
@@ -3637,31 +3607,6 @@
 			<name>esp_idf_components/espcoredump/src/port/xtensa/core_dump_port.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/espcoredump/src/port/xtensa/core_dump_port.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/expat/expat/expat/lib/xmlparse.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/expat/expat/expat/lib/xmlparse.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/expat/expat/expat/lib/xmlrole.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/expat/expat/expat/lib/xmlrole.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/expat/expat/expat/lib/xmltok.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/expat/expat/expat/lib/xmltok.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/expat/expat/expat/lib/xmltok_impl.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/expat/expat/expat/lib/xmltok_impl.c</location>
-		</link>
-		<link>
-			<name>esp_idf_components/expat/expat/expat/lib/xmltok_ns.c</name>
-			<type>1</type>
-			<location>/home/joerg/Development/esp32/esp-idf/components/expat/expat/expat/lib/xmltok_ns.c</location>
 		</link>
 		<link>
 			<name>esp_idf_components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c</name>
