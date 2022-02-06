@@ -18,8 +18,11 @@
 #include "ulp_riscv_utils.h"
 #include "ulp_riscv_gpio.h"
 
+#include "../../interface.h"
+
 uint32_t sht31_sda = 0;	//individual ports
 uint32_t sht31_scl = 0;
+
 
 #define SHT31_I2C_ADDR_L	0x44	//Device Addr
 #define SHT31_I2C_ADDR_H	0x45
@@ -240,10 +243,21 @@ int main (void) {
     if ((++mcycle >= set_sht31_force_wake) ||					//max cycles seit letzter Meldung
     	(abs(mtemp - sht31_temp) >= set_sht31_thres_temp) ||	//nach Temperaturänderung
 		(abs(mhumi - sht31_humi) >= set_sht31_thres_humi) ||	//nach Luftfeuchteänderung
-		(sht31_set_heater == 1)) {								//bei eingeschalteter Heizung
+		(sht31_set_heater == 1)) 								//bei eingeschalteter Heizung
+    {
     	mtemp = sht31_temp;
     	mhumi = sht31_humi;
     	mcycle = 0;
+
+    	//Stepup-Regler hochtasten
+        ulp_riscv_gpio_init(RTC_IO_STEPUP_CTRL);
+        ulp_riscv_gpio_output_enable(RTC_IO_STEPUP_CTRL);
+        ulp_riscv_gpio_set_output_mode(RTC_IO_STEPUP_CTRL, RTCIO_MODE_OUTPUT);
+        ulp_riscv_gpio_pullup_disable(RTC_IO_STEPUP_CTRL);
+        ulp_riscv_gpio_pulldown(RTC_IO_STEPUP_CTRL);
+    	ulp_riscv_gpio_output_level(RTC_IO_STEPUP_CTRL, 1);
+    	ulp_riscv_delay_cycles(5000 * ULP_RISCV_CYCLES_PER_US);
+
     	ulp_riscv_wakeup_main_processor();
     }
 

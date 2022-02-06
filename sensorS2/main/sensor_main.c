@@ -124,6 +124,22 @@ void rx_data_handler(wiog_header_t* pHdr)  {
 }
 
 // --------------------------------------------------------------------------------------------------------------
+#ifdef USE_STEPUP_CTRL
+//const gpio_num_t pwr_ctrl = GPIO_STEPUP_CTRL;	//Steuerung StepUp-Regler
+void init_stepup_ctrl(void)
+{
+	//RTC-GPIO initialisieren ------------------------------------------
+   	//Default - Steuerport StepUp-Regler, ctrl-port pulldwn
+   	rtc_gpio_init(GPIO_STEPUP_CTRL);
+   	rtc_gpio_set_direction(GPIO_STEPUP_CTRL, RTC_GPIO_MODE_OUTPUT_ONLY);
+   	rtc_gpio_pullup_dis(GPIO_STEPUP_CTRL);
+   	rtc_gpio_pulldown_en(GPIO_STEPUP_CTRL);
+
+   	//Stepup-Regler hochtasten nach allgem. Reset
+   	//nach DeepSleep bereits oben durch ULP / Wakeup-Stub
+   	rtc_gpio_set_level(GPIO_STEPUP_CTRL, 1);
+}
+#endif
 
 
 #ifdef USE_I2C_MASTER
@@ -151,24 +167,6 @@ i2c_port_t i2c_master_init()
 	return mport;
 }
 #endif
-
-#ifdef USE_STEPUP_CTRL
-//const gpio_num_t pwr_ctrl = GPIO_STEPUP_CTRL;	//Steuerung StepUp-Regler
-void init_stepup_ctrlx(void)
-{
-	//RTC-GPIO initialisieren ------------------------------------------
-   	//Default - Steuerport StepUp-Regler, ctrl-port pulldwn
-   	rtc_gpio_init(GPIO_STEPUP_CTRL);
-   	rtc_gpio_set_direction(GPIO_STEPUP_CTRL, RTC_GPIO_MODE_OUTPUT_ONLY);
-   	rtc_gpio_pullup_dis(GPIO_STEPUP_CTRL);
-   	rtc_gpio_pulldown_en(GPIO_STEPUP_CTRL);
-
-   	//Stepup-Regler hochtasten nach allgem. Reset
-   	//nach DeepSleep bereits oben durch ULP / Wakeup-Stub
-   	rtc_gpio_set_level(GPIO_STEPUP_CTRL, 1);
-}
-#endif
-
 
 #ifdef USE_ULP_FSM
 //Definitions ULP-Programm
@@ -207,7 +205,7 @@ extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 
 void init_ulp() {
 
-#ifdef DEBUG_X
+	#ifdef DEBUG_X
 	//ULP-Clockspeed
 	uint32_t rtc_8md256_period = rtc_clk_cal(RTC_CAL_8MD256, 100);
 	if (rtc_8md256_period > 0) {	//nach esp_restart() => 0
@@ -215,7 +213,7 @@ void init_ulp() {
 		printf("RTC FastFreq: %dHz\n", rtc_fast_freq_hz);
 	}
    	printf("[%04d]Initializing ULP\n", now());
-#endif
+	#endif
    	//ULP-Programm laden
     esp_err_t err = ulp_riscv_load_binary(ulp_main_bin_start, (ulp_main_bin_end - ulp_main_bin_start));
     ESP_ERROR_CHECK(err);
@@ -234,14 +232,10 @@ void init_ulp() {
 
 // Wakeup-Stub - Code wird nach DeepSleep vor dem Boot-Prozess ausgeführt
 void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
-	//StepUp-Regler einschalten oder oben halten
 	#ifdef USE_STEPUP_CTRL
+	//StepUp-Regler einschalten
+	GPIO_OUTPUT_SET(2, 1);
 
-GPIO_OUTPUT_SET(3,1);
-GPIO_OUTPUT_SET(3,0);
-//gpio_output_set(BIT3, 0, BIT3, 0);
-//gpio_output_set(0, BIT3, BIT3, 0);
-// 	GPIO_REG_WRITE(RTC_GPIO_OUT_W1TS_REG, 1<<(RTC_GPIO_OUT_DATA_W1TS_S + RTC_IO_STEPUP_CTRL));
 	#endif
 
  	//Extra Delay in Wakeup Stub -> s. SDK-Config/ESP32-specific 0..5000µs
@@ -249,10 +243,11 @@ GPIO_OUTPUT_SET(3,0);
 }
 
 void app_main(void) {
-GPIO_OUTPUT_SET(3,1);
+GPIO_OUTPUT_SET(2, 0);
+GPIO_OUTPUT_SET(3, 1);
 	tStart = esp_timer_get_time();
 	cb_rx_handler = &rx_data_handler;
-//rtc_gpio_hold_dis(GPIO_STEPUP_CTRL);
+
 	init_nvs();
 
 	bool waked_up __attribute__((unused)) = false;
@@ -269,16 +264,18 @@ GPIO_OUTPUT_SET(3,1);
 		(rst_reason != ESP_SLEEP_WAKEUP_TIMER)) {
     	//nach allgem. Reset initialisieren
 
-    	//Systemvariablen aus NVS -> RTC-MEM
+		#ifdef USE_STEPUP_CTRL
+//		init_stepup_ctrl();
+		#endif
+
+		//Systemvariablen aus NVS -> RTC-MEM
 //    	for (int ix=0; ix < MAX_SYSVAR; ix++) rtc_sysvar[ix] = nvs_get_sysvar(ix);
 
 		#if defined (USE_ULP_FSM) || defined (USE_ULP_RISCV)
     	init_ulp();	//ULP-Programm laden
 		#endif
 
-		#ifdef USE_STEPUP_CTRL
-//    	init_stepup_ctrl();
-		#endif
+
 
     	// ----------------------------------------------------------------
     } else {
@@ -610,13 +607,13 @@ GPIO_OUTPUT_SET(3,1);
 	#endif
 
 	wiog_wifi_sensor_goto_sleep(WAKEUP_SOURCE);
+//	rtc_gpio_isolate(GPIO_NUM_18); //Ruhestrom bei externem Pulldown reduzieren
 
 	#ifdef USE_STEPUP_CTRL
-	//Stepup-regler vor DeepSleep heruntertasten
-//   	rtc_gpio_set_level(GPIO_STEPUP_CTRL, 0);
-//   	rtc_gpio_hold_en(GPIO_STEPUP_CTRL);
-//GPIO_OUTPUT_SET(3,0);
-//gpio_output_set(0, BIT3, BIT3, 0);
+//	rtc_gpio_hold_dis(GPIO_STEPUP_CTRL);
+   	rtc_gpio_set_level(GPIO_STEPUP_CTRL, 0); 	//Stepup-regler vor DeepSleep heruntertasten
+//   	rtc_gpio_hold_en(GPIO_STEPUP_CTRL);			//und halten
+
 	#endif
 
    	printf("[%04d]Goto DeepSleep for %.3fs\n", now(), rtc_interval_ms / 1000.0);

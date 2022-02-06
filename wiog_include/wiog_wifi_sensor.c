@@ -408,7 +408,6 @@ void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {
 		break;
 	} //case
 
-	rtc_gpio_isolate(GPIO_NUM_15); //Ruhestrom bei externem Pulldown reduzieren
     esp_deep_sleep_disable_rom_logging();
 	rtc_onTime += (esp_timer_get_time() - tStart) / 1000;
 
