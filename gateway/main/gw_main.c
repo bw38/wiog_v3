@@ -3,6 +3,7 @@
 	Modul Gateway
 	WIOG - Protokollabwicklung
  */
+#include "gw_main.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -18,7 +19,7 @@
 
 #include "rs232.h"
 #include "shotlist.h"
-#include "gw_main.h"
+
 
 //WIoG - Wireless Internet of Garden
 #define WIOG_RX_QUEUE_SIZE 12
