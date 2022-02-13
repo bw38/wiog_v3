@@ -2079,6 +2079,11 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/spi_flash/esp32/flash_ops_esp32.c</location>
 		</link>
 		<link>
+			<name>esp_idf_components/ulp/ulp_common/ulp_common.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/ulp/ulp_common/ulp_common.c</location>
+		</link>
+		<link>
 			<name>esp_idf_components/wifi_provisioning/proto-c/wifi_config.pb-c.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/wifi_provisioning/proto-c/wifi_config.pb-c.c</location>
@@ -2599,6 +2604,11 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/cmac.c</location>
 		</link>
 		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/constant_time.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/constant_time.c</location>
+		</link>
+		<link>
 			<name>esp_idf_components/mbedtls/mbedtls/library/ctr_drbg.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ctr_drbg.c</location>
@@ -2709,6 +2719,16 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/memory_buffer_alloc.c</location>
 		</link>
 		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/mps_reader.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/mps_reader.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/mps_trace.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/mps_trace.c</location>
+		</link>
+		<link>
 			<name>esp_idf_components/mbedtls/mbedtls/library/nist_kw.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/nist_kw.c</location>
@@ -2779,6 +2799,71 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/poly1305.c</location>
 		</link>
 		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_aead.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_aead.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_cipher.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_cipher.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_client.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_client.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_driver_wrappers.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_driver_wrappers.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_ecp.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_ecp.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_hash.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_hash.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_mac.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_mac.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_rsa.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_rsa.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_se.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_se.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_slot_management.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_slot_management.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_crypto_storage.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_crypto_storage.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/psa_its_file.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/psa_its_file.c</location>
+		</link>
+		<link>
 			<name>esp_idf_components/mbedtls/mbedtls/library/ripemd160.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ripemd160.c</location>
@@ -2829,6 +2914,11 @@
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ssl_cookie.c</location>
 		</link>
 		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/ssl_msg.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ssl_msg.c</location>
+		</link>
+		<link>
 			<name>esp_idf_components/mbedtls/mbedtls/library/ssl_srv.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ssl_srv.c</location>
@@ -2842,6 +2932,11 @@
 			<name>esp_idf_components/mbedtls/mbedtls/library/ssl_tls.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ssl_tls.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/mbedtls/mbedtls/library/ssl_tls13_keys.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/mbedtls/mbedtls/library/ssl_tls13_keys.c</location>
 		</link>
 		<link>
 			<name>esp_idf_components/mbedtls/mbedtls/library/threading.c</name>
@@ -3917,6 +4012,11 @@
 			<name>esp_idf_components/lwip/lwip/src/netif/ppp/vj.c</name>
 			<type>1</type>
 			<location>/home/joerg/Development/esp32/esp-idf/components/lwip/lwip/src/netif/ppp/vj.c</location>
+		</link>
+		<link>
+			<name>esp_idf_components/efuse/src/efuse_controller/keys/without_key_purposes/three_key_blocks/esp_efuse_api_key.c</name>
+			<type>1</type>
+			<location>/home/joerg/Development/esp32/esp-idf/components/efuse/src/efuse_controller/keys/without_key_purposes/three_key_blocks/esp_efuse_api_key.c</location>
 		</link>
 	</linkedResources>
 </projectDescription>

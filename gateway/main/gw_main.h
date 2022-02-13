@@ -32,18 +32,18 @@
 #define LED_RT_TOGGLE	gpio_set_level(LED_RT, !gpio_get_level(LED_RT))
 
 //Arbeitskanel, Vorgabe durch RPi im c-Frame
-uint8_t wifi_channel;
+extern uint8_t wifi_channel;
 
 //statisches Array mit Default- und Geräteinformationen
 //Daten werden von RPi im d-Frame bereitgestellt
-device_info_block_t dib;
+extern device_info_block_t dib;
 
 
 //Prioritäten und Slots (synchron in allen Nodes (incl gw))
-node_info_block_t nib;
+extern node_info_block_t nib;
 
 //Liste der (einmalig)zu resettenden UID
-shotlist_t sl_uid_reset;
+extern shotlist_t sl_uid_reset;
 
 
 void send_data_frame(payload_t* buf, uint16_t len, dev_uid_t uid);

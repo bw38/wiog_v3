@@ -38,6 +38,11 @@ uint32_t tx_fid;			//aktuelle ID der letzten Sendung
 int64_t ts_ack = 0;
 uint8_t test = 0;
 
+device_info_block_t dib;
+node_info_block_t nib;
+shotlist_t sl_uid_reset;
+uint8_t wifi_channel;
+
 
 // Prototypen
 // ------------
