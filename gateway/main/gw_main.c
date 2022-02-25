@@ -113,9 +113,13 @@ static void wiog_rx_processing_task(void *pvParameter) {
 		wiog_header_t *pHdr = &evt.wiog_hdr;
 //		uint8_t data_len = pRx_ctrl->sig_len - sizeof(wiog_header_t) - 4;
 
+		//SNR direkt empfangener Pakete auswerten
 		//GW_UID, Dev_UID, SNR
 		int8_t snr = evt.rx_ctrl.rssi - evt.rx_ctrl.noise_floor;
-		snr_info_to_uart(my_uid, evt.wiog_hdr.uid, snr);
+		if (snr < 0) snr = 0;	//begrenzen, sonst fehlerhafte Auswertung
+		if (evt.wiog_hdr.mac_from[5] < 4) {
+			snr_info_to_uart(my_uid, evt.wiog_hdr.uid, snr);
+		}
 
 		//Antwort auf ChannelScan eines Devices -------------------------------------------
 		//Arbeitskanal wird in tx-processing in Header eingefügt
@@ -516,7 +520,7 @@ void snr_info_to_uart(dev_uid_t nuid, dev_uid_t duid, int8_t snr) {
 	struct  {
 		dev_uid_t node_uid;	//meldender Node / GW
 		dev_uid_t dev_uid;	//uid des anfragenden Gerätes
-		uint8_t snr;		//SNR des Device am Node
+		int8_t snr;			//SNR des Device am Node
 	}snr_info;
 
 	snr_info.node_uid = nuid;
