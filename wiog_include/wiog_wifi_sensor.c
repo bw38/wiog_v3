@@ -391,7 +391,11 @@ void wiog_wifi_sensor_goto_sleep(wakeup_src_t wus) {
 	if (tx_pwr_delta_dB < -3) tx_pwr_delta_dB = -3;
 	if (tx_pwr_delta_dB >  6) tx_pwr_delta_dB =  6;
 
-	rtc_tx_pwr += tx_pwr_delta_dB * 4;
+	if (tx_pwr_delta_dB < 0)
+		rtc_tx_pwr += tx_pwr_delta_dB;
+	else
+		rtc_tx_pwr += tx_pwr_delta_dB * 2;
+
 	if (rtc_tx_pwr > MAX_TX_POWER) rtc_tx_pwr = MAX_TX_POWER;
 	if (rtc_tx_pwr < MIN_TX_POWER) rtc_tx_pwr = MIN_TX_POWER;
 
