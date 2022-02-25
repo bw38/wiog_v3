@@ -234,12 +234,7 @@ void init_ulp() {
 void RTC_IRAM_ATTR esp_wake_deep_sleep(void) {
 	//StepUp-Regler einschalten oder oben halten
 	#ifdef USE_STEPUP_CTRL
-
-GPIO_OUTPUT_SET(3,1);
-GPIO_OUTPUT_SET(3,0);
-//gpio_output_set(BIT3, 0, BIT3, 0);
-//gpio_output_set(0, BIT3, BIT3, 0);
-// 	GPIO_REG_WRITE(RTC_GPIO_OUT_W1TS_REG, 1<<(RTC_GPIO_OUT_DATA_W1TS_S + RTC_IO_STEPUP_CTRL));
+	GPIO_OUTPUT_SET(GPIO_STEPUP_CTRL,1);
 	#endif
 test++;
  	//Extra Delay in Wakeup Stub -> s. SDK-Config/ESP32-specific 0..5000µs
